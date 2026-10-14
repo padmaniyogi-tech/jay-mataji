@@ -1,0 +1,1995 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#ff9933">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Super Over Blitz 🏏</title>
+<!--
+  ============================================================================
+  SUPER OVER BLITZ — single-file, offline, mobile-first cricket game
+  ----------------------------------------------------------------------------
+  • HTML5 Canvas + vanilla JS only. No external files, fonts, images or audio.
+  • Everything (crowd, sounds, confetti, fireworks) is generated in code.
+  • Architecture (search for "SECTION" banners):
+      1 UTILS      tiny helpers
+      2 STORAGE    localStorage progress (try/catch wrapped)
+      3 I18N       English / हिन्दी strings
+      4 DATA       shop items, ball types, 50-level curve, Hinglish commentary
+      5 AUDIO      Web Audio API synth (bat hits, crowd cheers, UI)
+      6 ADS        MONETIZATION STUBS (fake 3s ads) — replace with real SDK
+      7 SHOP       bats / trails / stadiums / premium (stub purchase)
+      8 GAME       state machine, deliveries, timing windows, scoring
+      9 RENDER     canvas scene, particles, screen shake, slow-mo, confetti
+     10 UI         screens, modals, tutorial, daily reward, share
+     11 INPUT/BOOT tap + spacebar + pause, main loop
+  • TWEAK: search the word "TWEAK" for every knob worth playing with.
+  ----------------------------------------------------------------------------
+  Ready to wrap with Capacitor or a Trusted Web Activity as-is.
+-->
+<style>
+/* ===================== BASE ===================== */
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#0a0d14}
+body{
+  font-family:'Segoe UI',system-ui,-apple-system,Roboto,'Noto Sans','Noto Sans Devanagari',sans-serif;
+  color:#f8f9fa;-webkit-font-smoothing:antialiased;touch-action:manipulation;
+  -webkit-user-select:none;user-select:none;
+}
+#stage{position:fixed;inset:0;overflow:hidden}
+#game{position:absolute;inset:0;display:block;touch-action:none}
+#tapzone{position:absolute;inset:0;z-index:5;touch-action:none}
+.hidden{display:none!important}
+button{cursor:pointer}
+
+/* ===================== HUD ===================== */
+#hud{position:absolute;top:0;left:0;right:0;z-index:10;pointer-events:none;
+  padding:calc(env(safe-area-inset-top,0px) + 8px) 10px 6px;display:flex;flex-direction:column;gap:4px}
+.hudRow{display:flex;align-items:center;gap:8px}
+.iconBtn{pointer-events:auto;width:42px;height:42px;border-radius:13px;border:1px solid #ffffff2e;
+  background:#0b0e14cc;font-size:18px;color:#fff;flex:none}
+.iconBtn:active{transform:scale(.92)}
+.hudMid{flex:1;text-align:center;background:#0b0e14b3;border:1px solid #ffffff24;border-radius:13px;padding:4px 8px;min-width:0}
+#hudScore{font-size:20px;font-weight:800;letter-spacing:.5px;line-height:1.1}
+#hudScore .dim{opacity:.6;font-size:14px}
+#hudSub{font-size:10.5px;opacity:.85;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hudRow2{display:flex;justify-content:center;align-items:center;gap:8px}
+#ballDots{display:flex;gap:5px;flex-wrap:wrap;justify-content:center}
+.bdot{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:800;border:1px solid #ffffff30}
+.bdot.pend{background:#00000052}
+.bdot.d6{background:#ff922b;color:#3b2100}
+.bdot.d4{background:#51cf66;color:#08300f}
+.bdot.dr{background:#4dabf7;color:#04263f}
+.bdot.dW{background:#ff6b6b;color:#40060a}
+.bdot.dDot{background:#343a40;color:#adb5bd}
+#comboPill{background:linear-gradient(90deg,#ff922b,#e8590c);padding:3px 10px;border-radius:999px;
+  font-weight:800;font-size:12px;box-shadow:0 2px 10px #e8590c66}
+
+/* ===================== SCREENS ===================== */
+#screens,#modalHost{position:absolute;inset:0;z-index:20;pointer-events:none}
+#modalHost{z-index:30}
+.screen{pointer-events:auto;position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;
+  display:flex;flex-direction:column;align-items:center;
+  padding:calc(env(safe-area-inset-top,0px) + 20px) 16px calc(env(safe-area-inset-bottom,0px) + 24px);
+  background:linear-gradient(180deg,#0a0d14d9,#0a0d14f2);animation:scrIn .22s ease}
+@keyframes scrIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+.scrHead{display:flex;flex-direction:column;align-items:center;gap:5px;margin-bottom:10px;width:100%;max-width:420px}
+.scrHead h2{font-size:22px;margin:4px 0}
+h2{margin:0;font-size:20px}
+
+/* ===================== BUTTONS / PILLS ===================== */
+.btn{border:none;border-radius:14px;padding:13px 22px;font-weight:800;font-size:16px;color:#231100;
+  background:linear-gradient(180deg,#ffb457,#ff8a00);box-shadow:0 4px 14px #ff8a0040,inset 0 1px 0 #ffffff70;
+  font-family:inherit}
+.btn:active{transform:scale(.96)}
+.btn.big{font-size:19px;padding:16px 30px;width:min(100%,320px)}
+.btn.green{color:#03210b;background:linear-gradient(180deg,#69db7c,#2f9e44);box-shadow:0 4px 14px #2f9e4440,inset 0 1px 0 #ffffff50}
+.btn.ghost{background:#ffffff14;color:#fff;border:1px solid #ffffff30;box-shadow:none}
+.btn.danger{background:linear-gradient(180deg,#ff8787,#e03131);color:#fff}
+.btn.small{padding:8px 14px;font-size:13px;border-radius:10px}
+.btn:disabled{filter:grayscale(.7);opacity:.6;cursor:default}
+.btnRow{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.pillRow{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.pill{background:#ffffff14;border:1px solid #ffffff22;border-radius:999px;padding:5px 12px;font-weight:800;font-size:13px}
+.pill.gold{background:#ffd43b22;border-color:#ffd43b66;color:#ffd43b}
+.pill.coins{color:#ffd43b}
+
+/* ===================== MENU ===================== */
+.menuWrap{display:flex;flex-direction:column;align-items:center;gap:12px;width:100%;max-width:420px;margin:auto}
+.logo{font-size:56px;filter:drop-shadow(0 4px 12px #ff993366);animation:bob 2.6s ease-in-out infinite}
+@keyframes bob{50%{transform:translateY(-8px) rotate(-4deg)}}
+.title{font-size:34px;font-weight:900;margin:0;line-height:1.05;text-align:center;letter-spacing:.5px;
+  background:linear-gradient(180deg,#ffd43b,#ff9933 55%,#e8590c);-webkit-background-clip:text;background-clip:text;color:transparent}
+.tag{font-size:13px;opacity:.8;font-weight:600}
+.menuGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;width:100%}
+.btnCard{background:#ffffff10;border:1px solid #ffffff20;border-radius:14px;color:#fff;padding:10px 4px;
+  display:flex;flex-direction:column;align-items:center;gap:4px;font-size:20px;font-family:inherit}
+.btnCard span{font-size:10.5px;font-weight:700;opacity:.85}
+.btnCard:active{transform:scale(.94)}
+.premBanner{width:100%;max-width:420px;border:none;border-radius:14px;padding:12px;font-weight:800;font-size:14px;
+  background:linear-gradient(90deg,#7048e8,#9775fa);color:#fff;font-family:inherit;box-shadow:0 4px 16px #7048e855}
+.premBanner:active{transform:scale(.98)}
+.ver{font-size:10px;opacity:.45;margin-top:6px;text-align:center}
+
+/* ===================== MODES ===================== */
+.modeCard{display:flex;gap:12px;align-items:center;width:100%;max-width:420px;background:#ffffff10;
+  border:1px solid #ffffff20;border-radius:16px;padding:14px;margin:6px 0;color:#fff;text-align:left;font-family:inherit}
+.modeCard:active{transform:scale(.98)}
+.modeIc{font-size:26px;width:48px;height:48px;flex:none;display:flex;align-items:center;justify-content:center;
+  background:#ffffff14;border-radius:12px}
+.modeName{font-weight:800;font-size:15px}
+.modeDesc{font-size:11.5px;opacity:.75}
+.modeStat{font-size:11px;color:#ffd43b;font-weight:700;margin-top:2px}
+
+/* ===================== LEVELS ===================== */
+.lvlGrid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;width:100%;max-width:420px}
+.lvl{aspect-ratio:1;border-radius:12px;border:1px solid #ffffff22;background:#ffffff12;display:flex;
+  flex-direction:column;align-items:center;justify-content:center;gap:2px;color:#fff;font-family:inherit}
+.lvl .lvlN{font-weight:800;font-size:16px}
+.lvl .lvlStars{font-size:9px;color:#ffd43b;letter-spacing:-1px}
+.lvl.locked{opacity:.35}
+.lvl:not(.locked):active{transform:scale(.9)}
+
+/* ===================== SHOP ===================== */
+.shopSec{width:100%;max-width:420px;margin-top:12px}
+.shopTitle{font-weight:900;font-size:14px;opacity:.85;margin-bottom:2px}
+.shopItem{display:flex;align-items:center;gap:12px;background:#ffffff0f;border:1px solid #ffffff1c;
+  border-radius:14px;padding:10px;margin:8px 0}
+.shopItem.eq{border-color:#51cf66;box-shadow:0 0 0 1px #51cf6666}
+.shopPrev{width:56px;height:56px;border-radius:12px;flex:none;display:flex;align-items:center;justify-content:center;
+  background:#00000038;overflow:hidden}
+.shopInfo{flex:1;min-width:0}
+.shopName{font-weight:800;font-size:14px}
+.shopSub{font-size:11px;opacity:.7}
+
+/* ===================== PREMIUM ===================== */
+.premWrap{display:flex;flex-direction:column;align-items:center;gap:12px;width:100%;max-width:380px;margin:auto}
+.premCard{background:linear-gradient(180deg,#2b2a4d,#1a1830);border:1px solid #9775fa66;border-radius:20px;
+  padding:22px;width:100%;display:flex;flex-direction:column;gap:10px;text-align:center;align-items:center}
+.premFeats{list-style:none;margin:0;padding:0;text-align:left;font-size:13.5px;display:flex;flex-direction:column;gap:8px}
+.price{font-size:30px;font-weight:900;color:#ffd43b}
+.stubNote{font-size:11px;color:#fab005;font-weight:700}
+
+/* ===================== SETTINGS ===================== */
+.setRow{display:flex;justify-content:space-between;align-items:center;gap:10px;background:#ffffff0d;
+  border:1px solid #ffffff1a;border-radius:14px;padding:12px 14px;margin:6px 0;width:100%;max-width:420px}
+.setLbl{font-weight:800;font-size:14px}
+.setSub{font-size:11px;opacity:.65;margin-top:2px;line-height:1.45}
+.seg{display:flex;background:#ffffff14;border-radius:12px;padding:4px;gap:4px}
+.seg button{flex:1;border:none;background:transparent;color:#ced4da;font-weight:700;padding:9px 14px;
+  border-radius:9px;font-family:inherit;font-size:13.5px}
+.seg button.on{background:linear-gradient(180deg,#ffb457,#ff8a00);color:#231100}
+.festRow{display:flex;gap:10px;width:100%}
+.festCard{flex:1;background:#ffffff10;border:2px solid transparent;border-radius:14px;padding:12px 6px;
+  text-align:center;font-family:inherit;color:#fff}
+.festCard.on{border-color:#ff9933;background:#ff99331a}
+.festCard .fi{font-size:26px}
+
+/* ===================== LEADERBOARD ===================== */
+.boardRow{display:flex;justify-content:space-between;align-items:center;gap:8px;background:#ffffff0d;
+  border:1px solid #ffffff1a;border-radius:12px;padding:10px 14px;margin:5px 0;width:100%;max-width:420px;
+  font-size:13px;font-weight:700}
+.boardRow .sc{font-size:17px;font-weight:900;color:#ffd43b}
+
+/* ===================== RESULT ===================== */
+.resWrap{display:flex;flex-direction:column;align-items:center;gap:8px;width:100%;max-width:380px;margin:auto}
+.resEmoji{font-size:52px;animation:bob 2s ease-in-out infinite}
+.resTitle{font-size:26px;font-weight:900;text-align:center}
+.resTitle.win{color:#ffd43b}.resTitle.lose{color:#ff8787}
+.newBest{color:#4dabf7;font-weight:800;font-size:13px}
+.stars{display:flex;gap:6px;font-size:42px;justify-content:center;margin:4px 0}
+.stars span{opacity:0;animation:starPop .4s ease forwards}
+.stars span:nth-child(2){animation-delay:.18s}.stars span:nth-child(3){animation-delay:.36s}
+.stars .on{color:#ffd43b;text-shadow:0 0 14px #ffd43b88}
+.stars .off{color:#495057}
+@keyframes starPop{from{transform:scale(0) rotate(-30deg);opacity:0}to{transform:scale(1);opacity:1}}
+.resScore{font-size:17px;font-weight:800}
+.resTarget{font-size:12.5px;opacity:.75;font-weight:700}
+.resList{width:100%;background:#ffffff0d;border:1px solid #ffffff1a;border-radius:12px;padding:8px 12px;font-size:12.5px}
+.resList .rl{display:flex;justify-content:space-between;padding:3px 0;opacity:.9}
+.resCoins{font-size:22px;font-weight:900;color:#ffd43b}
+
+/* ===================== MODAL / TOAST ===================== */
+.modalScr{position:absolute;inset:0;background:#000000a8;display:flex;align-items:center;justify-content:center;
+  padding:20px;pointer-events:auto;z-index:31}
+.modal{background:#141a26;border:1px solid #ffffff22;border-radius:18px;padding:20px;max-width:340px;width:100%;
+  text-align:center;display:flex;flex-direction:column;gap:10px;animation:scrIn .2s ease}
+.modal p{margin:0;font-size:13.5px;opacity:.85;line-height:1.55}
+.tutEmoji{font-size:58px}
+.tutDots{display:flex;gap:6px;justify-content:center}
+.tutDots span{width:8px;height:8px;border-radius:50%;background:#ffffff30}
+.tutDots span.on{background:#ff9933}
+#toast{position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 22px);transform:translateX(-50%);
+  z-index:60;background:#1b2330f2;border:1px solid #ffffff30;color:#fff;padding:10px 18px;border-radius:999px;
+  font-weight:700;font-size:13.5px;max-width:86%;text-align:center;box-shadow:0 6px 20px #00000066}
+
+/* ===================== FAKE AD OVERLAY ===================== */
+#adOverlay{position:absolute;inset:0;z-index:40;background:#000000d9;display:flex;align-items:center;justify-content:center;padding:20px}
+.adBox{width:100%;max-width:340px;display:flex;flex-direction:column;gap:10px}
+.adTag{font-size:11px;font-weight:800;letter-spacing:1px;color:#fab005;text-align:center}
+.adCreative{height:200px;border-radius:16px;background:linear-gradient(135deg,#5f3dc4,#e8590c,#ffd43b);
+  background-size:200% 200%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+  animation:adShift 3s linear infinite}
+@keyframes adShift{to{background-position:100% 100%}}
+.adCreative .adMain{font-size:26px;font-weight:900;color:#fff;text-shadow:0 2px 8px #00000080}
+.adCreative .adSub{font-size:12px;color:#ffffffd0;font-weight:700}
+.adBar{height:8px;border-radius:99px;background:#ffffff20;overflow:hidden}
+.adFill{height:100%;width:0%;background:linear-gradient(90deg,#ff9933,#2f9e44)}
+.adRow{display:flex;justify-content:space-between;align-items:center}
+#adCount{font-weight:800;font-size:13px}
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="game"></canvas>
+
+  <!-- tap layer: any tap = swing (only visible while playing) -->
+  <div id="tapzone" class="hidden"></div>
+
+  <!-- in-match HUD -->
+  <div id="hud" class="hidden">
+    <div class="hudRow">
+      <button class="iconBtn" data-hud="pause" aria-label="pause">⏸️</button>
+      <div class="hudMid">
+        <div id="hudScore">0<span class="dim">/0</span></div>
+        <div id="hudSub"></div>
+      </div>
+      <button class="iconBtn" data-hud="mute" aria-label="sound">🔊</button>
+    </div>
+    <div class="hudRow2">
+      <div id="ballDots"></div>
+      <div id="comboPill" class="hidden">🔥 x2</div>
+    </div>
+  </div>
+
+  <!-- menu / modes / shop / etc (injected) -->
+  <div id="screens"></div>
+  <!-- modals: tutorial, daily reward, extra life, confirms (injected) -->
+  <div id="modalHost"></div>
+  <!-- fake ad overlay (MONETIZATION STUB) -->
+  <div id="adOverlay" class="hidden"></div>
+  <!-- toast -->
+  <div id="toast" class="hidden"></div>
+</div>
+
+<script>
+"use strict";
+/* =====================================================================
+   SECTION 1 · UTILS — tiny helpers used everywhere
+   ===================================================================== */
+const $  = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const clamp = (v,a,b) => v<a?a:v>b?b:v;
+const lerp  = (a,b,p) => a+(b-a)*p;
+const rnd   = (a,b) => a+Math.random()*(b-a);
+const rndi  = (a,b) => Math.floor(rnd(a,b+1));
+const pick  = arr => arr[Math.floor(Math.random()*arr.length)];
+const smoothstep = (a,b,x) => { const t=clamp((x-a)/(b-a),0,1); return t*t*(3-2*t); };
+const easeOutQuad = t => 1-(1-t)*(1-t);
+const easeOutBack = t => { const c=1.70158; return 1+(c+1)*Math.pow(t-1,3)+c*Math.pow(t-1,2); };
+
+/** Deterministic RNG (mulberry32) — used for the date-seeded Daily Challenge. */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function todayKey(){const d=new Date();return d.getFullYear()*10000+(d.getMonth()+1)*100+d.getDate();}
+function yesterdayKey(){const d=new Date(Date.now()-864e5);return d.getFullYear()*10000+(d.getMonth()+1)*100+d.getDate();}
+function shortDate(){return new Date().toLocaleDateString('en-IN',{day:'numeric',month:'short'});}
+/** roundRect polyfill-path (kept manual for old Android WebView). */
+function rr(ctx,x,y,w,h,r){r=Math.min(r,w/2,h/2);ctx.beginPath();ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+/** lighten/darken a #rrggbb colour by amt (-255..255). */
+function shade(hex,amt){const n=parseInt(hex.slice(1),16);
+  const r=clamp((n>>16)+amt,0,255),g=clamp(((n>>8)&255)+amt,0,255),b=clamp((n&255)+amt,0,255);
+  return 'rgb('+r+','+g+','+b+')';}
+/* =====================================================================
+   SECTION 2 · STORAGE — all progress in localStorage, always try/catch
+   (private-mode / quota errors must never crash the game)
+   ===================================================================== */
+const Storage={
+  KEY:'superoverblitz_save_v1',
+  d:null,
+  defaults(){return{
+    v:1,
+    coins:120,                 // TWEAK: starting coins
+    lang:'en',                 // 'en' | 'hi'
+    sound:true,
+    festival:'classic',        // 'classic' | 'diwali' | 'ipl'
+    bat:'willow', trail:'none', stadium:'mumbai',
+    isPremium:false,           // MONETIZATION: single premium flag (stub purchase)
+    owned:{bats:['willow'],trails:['none'],stadiums:['mumbai']},
+    stars:{},                  // level number -> 0..3
+    best:{endless:0,super:0},
+    daily:{date:0,done:false,margin:-999},
+    login:{date:0,streak:0},   // daily login reward
+    board:[],                  // local leaderboard entries
+    tutorial:false,
+    matches:0
+  };},
+  load(){
+    let d=null;
+    try{const raw=localStorage.getItem(this.KEY);if(raw)d=JSON.parse(raw);}catch(e){d=null;}
+    this.d=(d&&d.v===1)?d:this.defaults();
+    // heal any missing keys (forward-compat with future save edits)
+    const def=this.defaults();
+    for(const k in def)if(this.d[k]===undefined)this.d[k]=def[k];
+    return this.d;
+  },
+  save(){try{localStorage.setItem(this.KEY,JSON.stringify(this.d));}catch(e){/* ignore */}},
+  wipe(){ // in-place reset so the DB alias stays valid
+    try{localStorage.removeItem(this.KEY);}catch(e){}
+    const def=this.defaults();
+    for(const k in def)this.d[k]=def[k];
+    this.save();
+  }
+};
+const DB=Storage.load();
+/* =====================================================================
+   SECTION 3 · I18N — English / हिन्दी UI strings.
+   Commentary stays Hinglish in both languages — that's the flavour!
+   ===================================================================== */
+const I18N={
+en:{
+  tagline:'Tap. Time. Smash sixes!',
+  play:'PLAY',shop:'Shop',leaderboard:'Leaderboard',settings:'Settings',howto:'How to Play',
+  goPremium:'Go Premium',back:'← Back',
+  superOver:'Super Over',superOverDesc:'6 balls. Chase the target. Pure adrenaline.',
+  endless:'Endless Survival',endlessDesc:'Keep batting until 3 wickets fall. Difficulty keeps rising!',
+  daily:'Daily Challenge',dailyDesc:'One target for everyone — changes every day.',
+  levels:'Levels',levelsDesc:'50 levels of rising difficulty. 3 stars each.',
+  need:'Need',off:'off',wickets:'wkts',score:'Score',best:'Best',totalStars:'Stars',
+  paused:'Paused',resume:'Resume',restart:'Restart',quit:'Quit to Menu',menu:'Menu',
+  sound:'Sound',on:'On',off:'Off',language:'Language',festival:'Festival Theme',
+  classic:'Classic',diwali:'Diwali',ipl:'IPL Night',
+  resetProgress:'Reset all progress',resetConfirm:'Delete ALL progress? This cannot be undone.',
+  resetDone:'Progress reset.',
+  youWin:'YOU WIN! 🏆',youLose:'MATCH LOST',gameOver:'ALL OUT!',levelCleared:'LEVEL CLEARED!',
+  playAgain:'▶ Play Again',doubleCoins:'🎁 Double coins (ad)',share:'📤 Share Score',
+  copied:'Score copied to clipboard!',newBest:'New best!',chased:'🏆 Chased it! What a win!',
+  balls:'balls',target:'Target',
+  runsRuns:'Runs',sixBonus:'Six bonus',fourBonus:'Four bonus',comboBonus:'Combo bonus',
+  winBonus:'Win bonus',milestoneBonus:'Milestone bonus',firstClearBonus:'First clear',
+  dailyBonus:'Daily bonus',premium2x:'Premium 2×',
+  buy:'Buy',equip:'Equip',equipped:'✓ Equipped',notEnough:'Not enough coins!',
+  needMoreCoins:'Earn coins by playing matches!',purchased:'Purchased!',equippedMsg:'Equipped!',
+  premiumOnly:'Premium exclusive — unlock it in the Premium screen.',
+  premiumActive:'Premium is ACTIVE 👑',restore:'Restore Purchase',
+  restoreNote:'Nothing to restore (stub). Purchases are one-time.',
+  buyPremium:'Unlock for ₹99',
+  premiumNote:'One-time purchase. This is a STUB — no real money is charged.',
+  pf1:'🚫 No ads, forever',pf2:'🏏 All bats unlocked',pf3:'🏟️ All stadiums unlocked',pf4:'💰 2× coins on every match',
+  dailyRewardTitle:'Daily Reward!',dayStreak:'day streak',claim:'Claim +{n} 🪙',comeBack:'Come back tomorrow for more!',
+  watchAd:'Watch ad',extraLifeQ:'Out of wickets! Want 1 extra life?',
+  extraLifeBtn:'▶ Watch ad → +1 life',freeLife:'👑 Free (Premium)',noThanks:'No thanks',
+  tut1t:'Time your tap',tut1b:'Watch the ball. Tap exactly when it reaches the bat — the shrinking green ring shows the perfect moment.',
+  tut2t:'Perfect = SIX',tut2b:'Perfect timing is a SIX, good timing is a FOUR. Too early or too late costs runs — or your wicket!',
+  tut3t:'Build combos 🔥',tut3b:'Hit boundaries back-to-back for combos and bonus coins. Every ball type has a different cue — learn to read them!',
+  startBatting:'Start Batting 🏏',next:'Next',skip:'Skip',
+  bt_fast:'FAST',bt_slow:'SLOW',bt_swing:'SWING',bt_spin:'SPIN',bt_bouncer:'BOUNCER',bt_yorker:'YORKER',
+  todayTarget:"Today's target",done:'Done ✓',notDone:'Not cleared yet',
+  boardEmpty:'No matches yet. Go smash some sixes!',
+  bestEndless:'Endless best',bestSuper:'Super Over best',starsTotal:'Total stars',
+  adStub:'STUB AD',rewardIn:'Reward in',adSkip:'Skip',
+  madeIn:'Made with ❤️ in India 🇮🇳',
+  controls:'Controls',controlsDesc:'Tap, click or press SPACE to play your shot — right as the ball reaches the bat!',
+  bats:'Bats',trails:'Ball Trails',stadiums:'Stadiums'
+},
+hi:{
+  tagline:'टैप करो। टाइम करो। छक्के मारो!',
+  play:'खेलें',shop:'दुकान',leaderboard:'लीडरबोर्ड',settings:'सेटिंग्स',howto:'कैसे खेलें',
+  goPremium:'प्रीमियम लें',back:'← वापस',
+  superOver:'सुपर ओवर',superOverDesc:'6 गेंदें। टारगेट पूरा करो। पूरा रोमांच।',
+  endless:'अंतहीन सर्वाइवल',endlessDesc:'3 विकेट गिरने तक बैटिंग करो। मुश्किल बढ़ती जाएगी!',
+  daily:'डेली चैलेंज',dailyDesc:'सबके लिए एक ही टारगेट — हर दिन बदलता है।',
+  levels:'लेवल',levelsDesc:'50 लेवल, मुश्किल बढ़ती जाएगी। हर लेवल पर 3 स्टार।',
+  need:'चाहिए',off:'में',wickets:'विकेट',score:'स्कोर',best:'सर्वश्रेष्ठ',totalStars:'स्टार',
+  paused:'रुका हुआ',resume:'जारी रखें',restart:'दोबारा',quit:'मेनू में जाएँ',menu:'मेनू',
+  sound:'आवाज़',on:'चालू',off:'बंद',language:'भाषा',festival:'त्योहार थीम',
+  classic:'क्लासिक',diwali:'दीवाली',ipl:'आईपीएल नाइट',
+  resetProgress:'सारी प्रोग्रेस हटाएँ',resetConfirm:'सारी प्रोग्रेस हट जाएगी। पक्का करें?',
+  resetDone:'प्रोग्रेस रीसेट हो गई।',
+  youWin:'तुम जीत गए! 🏆',youLose:'मैच हारा',gameOver:'सब आउट!',levelCleared:'लेवल पार!',
+  playAgain:'▶ फिर से खेलें',doubleCoins:'🎁 डबल सिक्के (विज्ञापन)',share:'📤 स्कोर शेयर करें',
+  copied:'स्कोर कॉपी हो गया!',newBest:'नया रिकॉर्ड!',chased:'🏆 टारगेट पूरा! क्या जीत है!',
+  balls:'गेंदें',target:'टारगेट',
+  runsRuns:'रन',sixBonus:'छक्का बोनस',fourBonus:'चौका बोनस',comboBonus:'कॉम्बो बोनस',
+  winBonus:'जीत बोनस',milestoneBonus:'मील का पत्थर',firstClearBonus:'पहली बार पार',
+  dailyBonus:'डेली बोनस',premium2x:'प्रीमियम 2×',
+  buy:'खरीदें',equip:'चुनें',equipped:'✓ चुना हुआ',notEnough:'सिक्के कम हैं!',
+  needMoreCoins:'मैच खेलकर सिक्के कमाओ!',purchased:'खरीद लिया!',equippedMsg:'चुन लिया!',
+  premiumOnly:'सिर्फ प्रीमियम — प्रीमियम स्क्रीन में अनलॉक करें।',
+  premiumActive:'प्रीमियम चालू है 👑',restore:'खरीद वापस लाएँ',
+  restoreNote:'कुछ नहीं मिला (स्टब)। खरीद एक बार की होती है।',
+  buyPremium:'₹99 में अनलॉक करें',
+  premiumNote:'एक बार की खरीद। यह सिर्फ स्टब है — असली पैसे नहीं लगेंगे।',
+  pf1:'🚫 हमेशा के लिए विज्ञापन बंद',pf2:'🏏 सारे बैट अनलॉक',pf3:'🏟️ सारे स्टेडियम अनलॉक',pf4:'💰 हर मैच में 2× सिक्के',
+  dailyRewardTitle:'दैनिक इनाम!',dayStreak:'दिन की स्ट्रीक',claim:'+{n} 🪙 लें',comeBack:'कल फिर आना!',
+  watchAd:'विज्ञापन देखें',extraLifeQ:'विकेट खत्म! एक जान और चाहिए?',
+  extraLifeBtn:'▶ विज्ञापन देखें → +1 जान',freeLife:'👑 मुफ्त (प्रीमियम)',noThanks:'नहीं ठीक है',
+  tut1t:'टैप का टाइमिंग',tut1b:'गेंद पर नज़र रखो। जब गेंद बैट तक पहुँचे तभी टैप करो — सिकुड़ता हरा घेरा सही वक़्त बताता है।',
+  tut2t:'परफेक्ट = छक्का',tut2b:'परफेक्ट टाइमिंग पर छक्का, अच्छी टाइमिंग पर चौका। बहुत जल्दी या देर से रन जाते हैं — या विकेट!',
+  tut3t:'कॉम्बो बनाओ 🔥',tut3b:'लगातार चौके-छक्के मारो, कॉम्बो और बोनस सिक्के पाओ। हर गेंद का अलग संकेत है — उसे पहचानना सीखो!',
+  startBatting:'बैटिंग शुरू करो 🏏',next:'आगे',skip:'छोड़ें',
+  bt_fast:'तेज़',bt_slow:'धीमी',bt_swing:'स्विंग',bt_spin:'स्पिन',bt_bouncer:'बाउंसर',bt_yorker:'यॉर्कर',
+  todayTarget:'आज का टारगेट',done:'हो गया ✓',notDone:'अभी बाकी है',
+  boardEmpty:'अभी कोई मैच नहीं। जाओ, छक्के मारो!',
+  bestEndless:'अंतहीन सर्वश्रेष्ठ',bestSuper:'सुपर ओवर सर्वश्रेष्ठ',starsTotal:'कुल स्टार',
+  adStub:'स्टब विज्ञापन',rewardIn:'इनाम',adSkip:'छोड़ें',
+  madeIn:'भारत में ❤️ के साथ बना 🇮🇳',
+  controls:'कंट्रोल्स',controlsDesc:'टैप, क्लिक या स्पेसबार से शॉट मारो — गेंद बैट पर पहुँचते ही!',
+  bats:'बैट',trails:'गेंद ट्रेल',stadiums:'स्टेडियम'
+}};
+function t(k){const L=I18N[DB.lang]||I18N.en;
+  return L[k]!==undefined?L[k]:(I18N.en[k]!==undefined?I18N.en[k]:k);}
+/** "Need 8 off 4" vs "4 गेंदों में 8 चाहिए" — word order differs per language. */
+function needText(need,balls){
+  return DB.lang==='hi' ? (balls+' '+t('balls')+' '+t('need')+' '+need)
+                        : (t('need')+' '+need+' '+t('off')+' '+balls);}
+/* =====================================================================
+   SECTION 4 · GAME DATA — shop items, ball types, level curve, commentary
+   TWEAK: the whole economy + difficulty curve lives in this section.
+   ===================================================================== */
+
+/* ---------- Unlockable bats (cosmetic; gold one sparkles on sixes) ---------- */
+const BATS=[
+  {id:'willow', n:'Classic Willow', sub:'The trusty starter',            price:0,    c:['#d9a866','#8a5a2b'],sparkle:false},
+  {id:'mongoose',n:'Mongoose Blade',sub:'Short blade, big swagger',      price:150,  c:['#ff922b','#e8590c'],sparkle:false},
+  {id:'royal',  n:'Royal Bengal',   sub:'Roar like the tiger',           price:400,  c:['#2f9e44','#1d6e2e'],sparkle:false},
+  {id:'saffron',n:'Saffron Master', sub:'Powered by tiranga pride',      price:900,  c:['#ff9933','#fff3bf'],sparkle:false},
+  {id:'gold',   n:'24K Champion',   sub:'Sparkles on every six',         price:2000, c:['#ffd43b','#e67700'],sparkle:true}
+];
+
+/* ---------- Unlockable ball trails ---------- */
+const TRAILS=[
+  {id:'none',    n:'No Trail',      sub:'Pure and clean',    price:0,   c:['#c92a2a','#c92a2a']},
+  {id:'fire',    n:'Fire Trail',    sub:'Garam ball, garam bat',price:200,c:['#ff922b','#e03131']},
+  {id:'tricolor',n:'Tricolour Trail',sub:'Saffron, white, green',price:350,c:['#ff9933','#138808']},
+  {id:'electric',n:'Electric Blue', sub:'Zip zap zoom',      price:500, c:['#4dabf7','#e5dbff']},
+  {id:'rainbow', n:'Rainbow Arcade',sub:'Premium exclusive', price:0,   c:['#f06595','#7048e8'],premiumOnly:true}
+];
+
+/* ---------- Unlockable stadium themes ---------- */
+const STADIUMS=[
+  {id:'mumbai', n:'Mumbai',  sub:'Wankhede vibes by the sea',price:0,   sky0:'#6fb7e8',sky1:'#dff1ff',
+   stands:'#1f4e8c',board:'#17457a',field:'#2f9e44',accent:'#ffd43b',
+   crowd:['#a5d8ff','#e7f5ff','#74c0fc','#ffd43b','#ffffff']},
+  {id:'chennai',n:'Chennai', sub:'Whistle podu, machi!',     price:300, sky0:'#7fc8e8',sky1:'#fff3c4',
+   stands:'#d9a90f',board:'#8a6d0b',field:'#2b8a3e',accent:'#fff3bf',
+   crowd:['#fff3bf','#ffe066','#ffec99','#ffffff','#fcc419']},
+  {id:'kolkata',n:'Kolkata', sub:'Eden Gardens roar',        price:500, sky0:'#8ecae6',sky1:'#ffe8cc',
+   stands:'#5f3dc4',board:'#3b2b83',field:'#2f9e44',accent:'#ffd43b',
+   crowd:['#d0bfff','#b197fc','#e5dbff','#ffd43b','#ffffff']},
+  {id:'delhi',  n:'Delhi',   sub:'Dil walon ka stadium',     price:700, sky0:'#74c0fc',sky1:'#ffe3e3',
+   stands:'#b03a2e',board:'#7b241c',field:'#37b24d',accent:'#ffe066',
+   crowd:['#ffc9c9','#ff8787','#ffe3e3','#4dabf7','#ffffff']}
+];
+
+/* ---------- Ball types ----------
+   travel: multiplier on the level's base travel time (smaller = faster ball)
+   win:    multiplier on the timing windows (smaller = tougher to time)
+   outAdd: added chance that a mistimed miss becomes a wicket
+   xJit:   random horizontal offset at release                          */
+const BALL_TYPES={
+  fast:    {travel:0.80, win:1.00, outAdd:0.00, xJit:14, icon:'⚡'},
+  slow:    {travel:1.45, win:1.15, outAdd:-0.05,xJit:18, icon:'🐌'},
+  swing:   {travel:1.00, win:0.95, outAdd:0.05, xJit:8,  icon:'🌊'},
+  spin:    {travel:1.30, win:1.05, outAdd:0.05, xJit:8,  icon:'🌀'},
+  bouncer: {travel:0.86, win:0.85, outAdd:0.08, xJit:12, icon:'⬆️'},
+  yorker:  {travel:0.78, win:0.80, outAdd:0.20, xJit:8,  icon:'🎯'}
+};
+const TYPE_COLORS={fast:'#ffd43b',slow:'#74c0fc',swing:'#4dabf7',spin:'#69db7c',bouncer:'#ff922b',yorker:'#ff8787'};
+
+/* ---------- Hinglish commentary pop-ups ---------- */
+const COMM={
+  six:['SIXER! Kya shot hai!','Seedha stadium ke bahar!','Adbuta timing, dada!','Ball milte hi GAYA!','That is MASSIVE!','Toot gaya kisi ka sheesha!'],
+  four:['Chauka! Beautiful!','Kadar timing ka hai!','Silky smooth, four runs!','Kya batting hai boss!'],
+  two:['Do run, shaant khel','Achha shot, easy two'],
+  one:['Ek run liya','Single, no risk'],
+  dot:['Arre! Miss ho gaya','Dot ball, koi baat nahi','Timing off hai yaar'],
+  early:['Itni jaldi kya hai bhai?','Sabr rakho thoda!','Ball abhi aaya nahi!'],
+  out:['BOWLED! Hard luck yaar!','Out! Pakad liya!','Wicket gir gayi!','Clean bowled, kya delivery!'],
+  combo:['Garam hai! Combo x{n}!','Aag lagi hai! x{n}!','Rukna mat! x{n}!'],
+  milestone:['{n} runs up! Shabaash!']
+};
+
+/* ---------- Tutorial slides (keys into I18N) ---------- */
+const TUT=[
+  {e:'⏱️',k:'tut1t',kb:'tut1b'},
+  {e:'💥',k:'tut2t',kb:'tut2b'},
+  {e:'🔥',k:'tut3t',kb:'tut3b'}
+];
+
+/* ---------- 50-level difficulty curve ----------
+   TWEAK: every number here changes the whole game's pacing. */
+const LVL={
+  travel:n=>1060-n*7,                        // base ball travel ms (L1≈1053 → L50≈710)
+  w1:n=>46-n*0.28,                           // SIX window ±ms      (L1≈46 → L50≈32)
+  w2:n=>96-n*0.6,                            // FOUR window ±ms     (L1≈96 → L50≈66)
+  w3:n=>165-n*0.9,                           // 2-runs window ±ms
+  w4:n=>235-n*0.7,                           // 1-run window ±ms
+  outChance:n=>Math.min(0.6,0.3+n*0.006),    // chance a wild miss is OUT
+  target:n=>clamp(Math.round(6+n*0.36+Math.sin(n*1.7)*1.5),6,24) // runs to chase in 6 balls
+};
+
+/* Which ball types can appear at a given difficulty level, with weights. */
+function typeWeights(lvl){
+  const w={fast:3,slow:2};
+  if(lvl>=3)w.swing=2; if(lvl>=6)w.spin=2; if(lvl>=9)w.bouncer=1.5; if(lvl>=12)w.yorker=1.5;
+  if(lvl>=18){w.slow=1;w.swing=2.5;}
+  if(lvl>=30){w.yorker=2.5;w.bouncer=2;w.spin=2.5;w.fast=2;}
+  return w;
+}
+function pickType(lvl,rng){
+  rng=rng||Math.random;
+  const w=typeWeights(lvl);let tot=0;for(const k in w)tot+=w[k];
+  let r=rng()*tot;
+  for(const k in w){r-=w[k];if(r<=0)return k;}
+  return 'fast';
+}
+
+/* ---------- equipped-item helpers ---------- */
+function equippedBat(){return BATS.find(b=>b.id===DB.bat)||BATS[0];}
+function equippedTrail(){return TRAILS.find(b=>b.id===DB.trail)||TRAILS[0];}
+function stadiumDef(){return STADIUMS.find(s=>s.id===DB.stadium)||STADIUMS[0];}
+
+/* Today's Daily Challenge (same for everyone, from the date seed). */
+function dailyInfo(){
+  const rng=mulberry32(todayKey());
+  return{target:8+Math.floor(rng()*9),diff:12+Math.floor(rng()*6)};
+}
+/* =====================================================================
+   SECTION 5 · AUDIO — every sound is synthesised with the Web Audio API.
+   No audio files anywhere. iOS needs the context created inside a user
+   gesture, so ensure() is called from every tap/click handler.
+   ===================================================================== */
+const AudioSys={
+  ctx:null,master:null,noiseBuf:null,ambient:null,
+  ensure(){
+    if(this.ctx){if(this.ctx.state==='suspended'){try{this.ctx.resume();}catch(e){}}return;}
+    try{
+      const AC=window.AudioContext||window.webkitAudioContext;
+      if(!AC)return;
+      this.ctx=new AC();
+      this.master=this.ctx.createGain();
+      this.master.gain.value=DB.sound?0.6:0;
+      this.master.connect(this.ctx.destination);
+      // 1s of white noise, reused by every noise-based sound
+      const len=this.ctx.sampleRate;
+      const buf=this.ctx.createBuffer(1,len,this.ctx.sampleRate);
+      const ch=buf.getChannelData(0);
+      for(let i=0;i<len;i++)ch[i]=Math.random()*2-1;
+      this.noiseBuf=buf;
+    }catch(e){/* audio unsupported — game still fully playable */}
+  },
+  setMuted(m){if(this.master)this.master.gain.value=m?0:0.6;},
+  tone(freq,dur,type,vol,slideTo,delay){
+    if(!this.ctx||!DB.sound)return;
+    try{
+      const t0=this.ctx.currentTime+(delay||0);
+      const o=this.ctx.createOscillator(),g=this.ctx.createGain();
+      o.type=type||'sine';o.frequency.setValueAtTime(freq,t0);
+      if(slideTo)o.frequency.exponentialRampToValueAtTime(slideTo,t0+dur);
+      g.gain.setValueAtTime(vol||0.3,t0);
+      g.gain.exponentialRampToValueAtTime(0.001,t0+dur);
+      o.connect(g);g.connect(this.master);
+      o.start(t0);o.stop(t0+dur+0.02);
+    }catch(e){}
+  },
+  noise(dur,vol,f0,f1,type,delay){
+    if(!this.ctx||!DB.sound||!this.noiseBuf)return;
+    try{
+      const t0=this.ctx.currentTime+(delay||0);
+      const src=this.ctx.createBufferSource();src.buffer=this.noiseBuf;src.loop=true;
+      const flt=this.ctx.createBiquadFilter();flt.type=type||'bandpass';
+      flt.frequency.setValueAtTime(f0,t0);
+      if(f1)flt.frequency.exponentialRampToValueAtTime(f1,t0+dur);
+      flt.Q.value=1;
+      const g=this.ctx.createGain();
+      g.gain.setValueAtTime(0.0001,t0);
+      g.gain.exponentialRampToValueAtTime(vol,t0+Math.min(0.08,dur*0.3));
+      g.gain.exponentialRampToValueAtTime(0.001,t0+dur);
+      src.connect(flt);flt.connect(g);g.connect(this.master);
+      src.start(t0);src.stop(t0+dur+0.05);
+    }catch(e){}
+  },
+  /* ---- SFX ---- */
+  ui(){this.tone(640,0.06,'triangle',0.22);},
+  swing(){this.noise(0.12,0.16,400,1600);},
+  hit(p){this.tone(140+p*90,0.09,'triangle',0.5);this.noise(0.05,0.22,2200,700);},
+  six(){this.tone(523,0.09,'square',0.2);this.tone(659,0.09,'square',0.2,null,0.09);
+        this.tone(784,0.16,'square',0.24,null,0.18);this.cheer(1);},
+  four(){this.tone(440,0.08,'triangle',0.24);this.tone(587,0.12,'triangle',0.24,null,0.09);this.cheer(0.6);},
+  out(){this.tone(160,0.3,'sawtooth',0.32,70);this.noise(0.25,0.28,300,120,'lowpass');this.cheer(0.25,'low');},
+  cheer(v,mood){ // crowd swell — filtered noise
+    v=v||1;const dur=0.5+v*0.9;
+    this.noise(dur,0.12*v+0.05,mood==='low'?420:900,mood==='low'?300:1400);
+    if(mood!=='low')this.noise(dur*0.7,0.06*v+0.02,2400,3000,'highpass');
+  },
+  coin(){this.tone(880,0.07,'sine',0.24);this.tone(1320,0.1,'sine',0.24,null,0.07);},
+  bounce(){this.tone(210,0.04,'sine',0.14);},
+  win(){[523,659,784,1047].forEach((f,i)=>this.tone(f,0.16,'square',0.2,null,i*0.12));this.cheer(1.2);},
+  lose(){[330,262,196].forEach((f,i)=>this.tone(f,0.2,'triangle',0.22,null,i*0.14));},
+  firework(){this.noise(0.5,0.13,600,200);this.tone(1200,0.3,'sine',0.07,300);},
+  /* ---- soft looping crowd ambience while a match is on ---- */
+  startAmbient(){
+    if(!this.ctx||this.ambient)return;
+    try{
+      const src=this.ctx.createBufferSource();src.buffer=this.noiseBuf;src.loop=true;
+      const flt=this.ctx.createBiquadFilter();flt.type='lowpass';flt.frequency.value=420;
+      const g=this.ctx.createGain();g.gain.value=0.035;
+      src.connect(flt);flt.connect(g);g.connect(this.master);
+      src.start();this.ambient=src;
+    }catch(e){}
+  },
+  stopAmbient(){if(this.ambient){try{this.ambient.stop();}catch(e){}this.ambient=null;}}
+};
+/* =====================================================================
+   SECTION 6 · ADS — ⚠️ MONETIZATION STUBS ⚠️
+   ----------------------------------------------------------------------------
+   These are FAKE 3-second in-browser ads so the whole ad flow can be
+   tested locally. To go live after wrapping with Capacitor / TWA:
+     1. Install a real SDK (e.g. AdMob via capacitor-community/admob,
+        or AdSense-H5 for a Trusted Web Activity).
+     2. Replace the bodies of showInterstitialAd() / showRewardedAd()
+        with the real SDK calls, keeping the same signatures.
+   Behaviour today:
+     • showInterstitialAd(onDone) — skipped instantly for premium users.
+     • showRewardedAd(onReward)   — 3s unskippable, then onReward() fires.
+   ===================================================================== */
+const Ads={
+  show(kind,onDone){
+    const ov=$('#adOverlay');
+    let closed=false;
+    const close=()=>{if(closed)return;closed=true;clearInterval(iv);
+      ov.classList.add('hidden');ov.innerHTML='';if(onDone)onDone();};
+    ov.innerHTML=
+      '<div class="adBox">'+
+        '<div class="adTag">'+(kind==='rewarded'?'🎁 '+t('rewardIn')+' — '+t('adStub'):'📺 '+t('adStub'))+'</div>'+
+        '<div class="adCreative"><span class="adMain">Your Ad Here</span><span class="adSub">Fake 3-second ad for testing the flow</span></div>'+
+        '<div class="adBar"><div class="adFill" id="adFill"></div></div>'+
+        '<div class="adRow"><span id="adCount"></span><button class="btn small ghost" id="adSkipBtn" '+(kind==='rewarded'?'disabled':'')+'">✕ '+t('adSkip')+'</button></div>'+
+      '</div>';
+    ov.classList.remove('hidden');
+    const start=performance.now();
+    const iv=setInterval(()=>{
+      const el=(performance.now()-start)/1000,left=Math.max(0,3-el);
+      const fill=$('#adFill');if(fill)fill.style.width=(Math.min(1,el/3)*100)+'%';
+      const c=$('#adCount');
+      if(c)c.textContent=(kind==='rewarded'?t('rewardIn')+' ':'')+Math.ceil(left);
+      if(left<=0){close();return;}
+      if(kind==='interstitial'&&el>1){const b=$('#adSkipBtn');if(b)b.disabled=false;}
+    },100);
+    const sb=$('#adSkipBtn');
+    if(sb)sb.onclick=()=>{if(!sb.disabled)close();};
+    AudioSys.ui();
+  }
+};
+/* Interstitial: shown by the game between matches for non-premium users. */
+function showInterstitialAd(onDone){
+  if(DB.isPremium){if(onDone)onDone();return;}   // premium removes interstitials
+  Ads.show('interstitial',onDone);
+}
+/* Rewarded: user-initiated (double coins / extra life). Premium users still
+   "watch" so the flow stays testable — swap this out for your SDK. */
+function showRewardedAd(onReward){Ads.show('rewarded',onReward);}
+/* =====================================================================
+   SECTION 7 · SHOP — bats / trails / stadiums bought with coins,
+   plus the ₹99 Premium upsell (STUB purchase — no real money).
+   ===================================================================== */
+const Shop={
+  find(kind,id){
+    const arr=kind==='bats'?BATS:kind==='trails'?TRAILS:STADIUMS;
+    return arr.find(x=>x.id===id);
+  },
+  isOwned(kind,id){
+    if((kind==='bats'||kind==='stadiums')&&DB.isPremium)return true; // premium unlocks these
+    if(kind==='trails'&&id==='rainbow')return !!DB.isPremium;        // rainbow is premium-exclusive
+    return DB.owned[kind].indexOf(id)>=0;
+  },
+  isEquipped(kind,id){
+    const cur=kind==='bats'?DB.bat:kind==='trails'?DB.trail:DB.stadium;
+    return cur===id;
+  },
+  buy(ref){
+    const parts=ref.split(':'),kind=parts[0],id=parts[1];
+    const item=this.find(kind,id);if(!item)return;
+    if(this.isOwned(kind,id)){this.equip(ref,true);return;}
+    if(item.premiumOnly&&!DB.isPremium){toast(t('premiumOnly'));return;}
+    if(DB.coins<item.price){toast(t('notEnough')+' '+t('needMoreCoins'));return;}
+    DB.coins-=item.price;
+    DB.owned[kind].push(id);
+    Storage.save();AudioSys.coin();toast(t('purchased'));
+    this.equip(ref,true);
+  },
+  equip(ref,silent){
+    const parts=ref.split(':'),kind=parts[0],id=parts[1];
+    if(!this.isOwned(kind,id))return;
+    if(kind==='bats')DB.bat=id;
+    else if(kind==='trails')DB.trail=id;
+    else{DB.stadium=id;Render.buildCrowd();}
+    Storage.save();
+    if(!silent){AudioSys.ui();toast(t('equippedMsg'));}
+    UI.screen('shop'); // re-render
+  },
+  /* ---- ⚠️ PREMIUM STUB PURCHASE — replace with real billing (Razorpay /
+         Google Play Billing) when going live. isPremium is the only flag. ---- */
+  buyPremium(){
+    UI.modal(
+      '<div style="font-size:40px">👑</div><h2>'+t('goPremium')+'</h2>'+
+      '<p class="stubNote">⚠️ STUB — no real payment will be taken.</p>'+
+      '<ul class="premFeats" style="text-align:left"><li>'+t('pf1')+'</li><li>'+t('pf2')+'</li><li>'+t('pf3')+'</li><li>'+t('pf4')+'</li></ul>'+
+      '<button class="btn" data-act="confirmPremium">'+t('buyPremium')+'</button>'+
+      '<button class="btn ghost" data-act="closeModal">'+t('noThanks')+'</button>'
+    );
+  },
+  confirmPremium(){
+    DB.isPremium=true;          // ← the single premium flag in localStorage
+    Storage.save();
+    UI.closeModal();
+    UI.screen('premium');
+    Render.confetti();AudioSys.win();
+    toast('👑 '+t('premiumActive'));
+  }
+};
+/* =====================================================================
+   SECTION 8 · GAME CORE — state machine, deliveries, outcomes, scoring
+   ----------------------------------------------------------------------------
+   A ball's life:  'pre' (breather) → 'windup' (bowler runs in, cue shows)
+                   → 'flight' (ball travels; player taps) → 'aftermath'
+                   → next ball / end of match.
+   Timing is measured on a game-clock (ms) that slows for slow-motion.
+   ===================================================================== */
+const VH=()=>Render.L?Render.L.H:600; // viewport height shortcut for physics
+
+/* Ball position along its path (p = 0 at release, 1 at the bat). */
+function ballPathX(b,p){
+  let x=b.x0;
+  if(b.type==='swing')x+=b.curveDir*b.curveAmt*smoothstep(0,0.9,p);   // gradual drift
+  else if(b.type==='spin')x+=b.curveDir*b.curveAmt*smoothstep(0.62,1,p); // late snap
+  return x;
+}
+function ballPathY(b,p){
+  let y=lerp(b.y0,b.y1,p);
+  const H=VH();
+  if(b.type==='slow')y-=Math.sin(Math.PI*p)*H*0.055;             // loopy flight
+  else if(b.type==='bouncer'&&p>b.bounceT){                       // hops up after pitching
+    const q=(p-b.bounceT)/(1-b.bounceT);
+    y-=Math.sin(Math.PI*q)*H*0.085;
+  }
+  return y;
+}
+
+const Game={
+  state:'menu',            // 'menu' | 'playing' | 'paused' | 'result'
+  mode:null,level:1,       // mode: 'super' | 'endless' | 'daily' | 'level'
+  clock:0,timeScale:1,slowmoT:0,events:[],
+  runs:0,wickets:0,ballNo:0,totalBalls:6,wicketLimit:2,target:0,won:false,
+  combo:0,comboMax:0,sixes:0,fours:0,bonusCoins:0,milestones:0,
+  history:[],              // per-ball outcome for the HUD dots
+  ball:null,curCfg:null,
+  swingT:-1,               // clock time the bat swing started
+  extraLifeUsed:false,dailyTypes:null,
+  stumpFall:0,cheer:0,
+
+  /* ---------------- match setup ---------------- */
+  start(mode,lvl){
+    this.mode=mode;this.level=lvl||1;
+    this.won=false;this.runs=0;this.wickets=0;this.ballNo=0;
+    this.combo=0;this.comboMax=0;this.sixes=0;this.fours=0;this.bonusCoins=0;this.milestones=0;
+    this.history=[];this.ball=null;this.swingT=-1;this.extraLifeUsed=false;
+    this.clock=0;this.timeScale=1;this.slowmoT=0;this.events=[];
+    this.stumpFall=0;this.cheer=0;this.dailyTypes=null;
+    if(mode==='endless'){this.level=1;this.target=0;this.totalBalls=Infinity;this.wicketLimit=3;}
+    else if(mode==='super'){this.level=rndi(3,7);this.totalBalls=6;this.wicketLimit=2;this.target=rndi(9,12);}
+    else if(mode==='level'){this.level=lvl;this.totalBalls=6;this.wicketLimit=2;this.target=LVL.target(lvl);}
+    else if(mode==='daily'){
+      const info=dailyInfo();
+      this.level=info.diff;this.totalBalls=6;this.wicketLimit=2;this.target=info.target;
+      const rng=mulberry32(todayKey());       // same 6 balls for everyone, every day
+      this.dailyTypes=[];for(let i=0;i<6;i++)this.dailyTypes.push(pickType(info.diff,rng));
+    }
+    this.state='playing';
+    UI.closeAll();UI.showHUD(true);UI.updateHUD();UI.renderBallDots();
+    AudioSys.ensure();AudioSys.startAmbient();
+    this.beginBall();
+  },
+
+  /* ---------------- per-ball setup ---------------- */
+  beginBall(){
+    if(this.mode==='endless')this.level=Math.min(50,1+Math.floor(this.ballNo/5)); // survival ramp
+    const type=this.dailyTypes?this.dailyTypes[Math.min(this.ballNo,5)]:pickType(this.level);
+    const bt=BALL_TYPES[type];
+    const travel=Math.round(LVL.travel(this.level)*bt.travel*rnd(0.96,1.04));
+    this.curCfg={
+      w1:LVL.w1(this.level)*bt.win,
+      w2:LVL.w2(this.level)*bt.win,
+      w3:LVL.w3(this.level)*bt.win,
+      w4:LVL.w4(this.level)*bt.win,
+      outChance:clamp(LVL.outChance(this.level)+bt.outAdd,0.05,0.85)
+    };
+    const L=Render.L;
+    this.ball={
+      type,travel,phase:'pre',phaseAt:this.clock,
+      releaseAt:0,arrivalAt:0,tapped:false,tapAt:0,dt:0,outcome:null,resolved:false,resolveAt:0,
+      x0:L.cx+rnd(-1,1)*bt.xJit*0.5,
+      y0:L.releaseY,
+      y1:L.hitY+(type==='yorker'?16:type==='bouncer'?-24:0),
+      curveDir:Math.random()<0.5?-1:1,
+      curveAmt:(type==='swing'?rnd(22,34):type==='spin'?rnd(18,30):0),
+      bounceT:0.42,bounced:false,away:null,ballIndex:this.ballNo,
+      trail:[],spinAng:0,spinSpd:(type==='spin'?14:6)*rnd(0.8,1.2)*(Math.random()<0.5?-1:1),
+      aftermathDur:1000
+    };
+    this.swingT=-1;this.stumpFall=0;
+  },
+  enterWindup(){const b=this.ball;b.phase='windup';b.phaseAt=this.clock;},
+  release(){const b=this.ball;b.phase='flight';b.releaseAt=this.clock;b.arrivalAt=this.clock+b.travel;
+    if(b.tapped)b.resolveAt=b.arrivalAt; /* premature tap already registered */},
+
+  /* ---------------- input ---------------- */
+  tap(){
+    AudioSys.ensure();
+    if(this.state!=='playing')return;
+    const b=this.ball;if(!b||b.tapped)return;
+    this.swingT=this.clock;AudioSys.swing();
+    if(b.phase==='pre'||b.phase==='windup'){        // swung way too early
+      b.tapped=true;b.tapAt=this.clock;b.dt=-9999;b.outcome={kind:'early'};return;
+    }
+    if(b.phase!=='flight')return;
+    b.tapped=true;b.tapAt=this.clock;
+    b.dt=b.tapAt-b.arrivalAt;                        // + = late, − = early
+    b.outcome=this.computeOutcome(b.dt);
+    b.resolveAt=Math.max(b.arrivalAt,b.tapAt);
+  },
+
+  /* Timing windows → outcome. TWEAK: tweak LVL in SECTION 4, not here. */
+  computeOutcome(dt){
+    const c=this.curCfg,a=Math.abs(dt);
+    if(dt<-380)return{kind:'early'};
+    if(a<=c.w1)return{kind:'six'};
+    if(a<=c.w2)return{kind:'four'};
+    if(a<=c.w3)return{kind:'two'};
+    if(a<=c.w4)return{kind:'one'};
+    return{kind:'miss',out:Math.random()<c.outChance,how:Math.random()<0.5?'bowled':'caught'};
+  },
+
+  /* ---------------- main update (called every frame) ---------------- */
+  update(rdt){
+    if(this.slowmoT>0){                              // winning-shot slow motion
+      this.slowmoT-=rdt;
+      this.timeScale=this.slowmoT>140?0.22:lerp(1,0.22,Math.max(0,this.slowmoT)/140);
+      if(this.slowmoT<=0)this.timeScale=1;
+    }
+    const dt=rdt*this.timeScale;
+    if(this.state==='playing'){
+      this.clock+=dt;
+      const b=this.ball;
+      if(b){
+        if(b.phase==='pre'&&this.clock-b.phaseAt>=(b.ballIndex===0?800:520))this.enterWindup();
+        else if(b.phase==='windup'&&this.clock-b.phaseAt>=640)this.release();
+        else if(b.phase==='flight'){
+          const p=(this.clock-b.releaseAt)/b.travel;
+          if(!b.bounced&&b.type==='bouncer'&&p>=b.bounceT){b.bounced=true;AudioSys.bounce();}
+          if(!b.resolved){
+            let due=false;
+            if(b.tapped&&this.clock>=b.resolveAt)due=true;
+            else if(!b.tapped&&this.clock>b.arrivalAt+330){ // no shot played → bowled
+              b.outcome={kind:'out',how:'bowled',noTap:true};b.resolveAt=this.clock;due=true;
+            }
+            if(due)this.resolveContact();
+          }
+        }
+        else if(b.phase==='aftermath'&&this.clock-b.phaseAt>=b.aftermathDur)this.afterBall();
+      }
+      if(this.stumpFall>0&&this.stumpFall<1)this.stumpFall=Math.min(1,this.stumpFall+dt/550);
+      for(let i=this.events.length-1;i>=0;i--){       // scheduled game-clock events
+        if(this.clock>=this.events[i].at){const e=this.events.splice(i,1)[0];e.fn();}
+      }
+      this.cheer=Math.max(0,this.cheer-rdt/1200);
+    }
+    Render.updateFx(dt,rdt);
+  },
+
+  /* ---------------- resolve the tap (contact moment) ---------------- */
+  resolveContact(){
+    const b=this.ball,o=b.outcome,L=Render.L,cx=L.cx,hy=b.y1;
+    b.resolved=true;b.phase='aftermath';b.phaseAt=this.clock;
+    let kind=o.kind;
+    if(kind==='miss'&&!o.out)kind='dot';
+    else if(kind==='miss'&&o.out)kind='out';
+    b.aftermathDur=kind==='six'?1500:kind==='four'?1200:kind==='out'?1500:950;
+
+    if(kind==='six'){
+      this.runs+=6;this.sixes++;this.combo++;this.comboMax=Math.max(this.comboMax,this.combo);
+      this.history.push('6');
+      Render.big('SIX!','#ffd43b');Render.float(pick(COMM.six),'#ffd43b');
+      Render.shake(9);Render.burst(cx,hy,26,['#ffd43b','#ff922b','#ffffff']);
+      AudioSys.six();this.cheer=1;this.vibe(50);
+      if(equippedBat().sparkle)Render.burst(cx,hy-24,16,['#ffe066','#ffffff']);
+      b.away={x:cx,y:hy,vx:rnd(-70,70),vy:-VH()*0.62,g:330,t:0,life:1400};
+      if(DB.festival!=='classic')this.events.push({at:this.clock+300,fn:()=>Render.firework()});
+    }
+    else if(kind==='four'){
+      this.runs+=4;this.fours++;this.combo++;this.comboMax=Math.max(this.comboMax,this.combo);
+      this.history.push('4');
+      Render.big('FOUR!','#69db7c');Render.float(pick(COMM.four),'#69db7c');
+      Render.shake(4);Render.burst(cx,hy,14,['#69db7c','#ffffff']);
+      AudioSys.four();this.cheer=0.7;this.vibe(30);
+      b.away={x:cx,y:hy,vx:rnd(170,260)*(Math.random()<0.5?-1:1),vy:-VH()*0.12,g:150,t:0,life:900};
+    }
+    else if(kind==='two'){
+      this.runs+=2;this.combo=0;this.history.push('2');
+      AudioSys.hit(0.5);AudioSys.cheer(0.25);Render.float(pick(COMM.two),'#a5d8ff');
+      b.away={x:cx,y:hy,vx:rnd(-140,140),vy:-VH()*0.18,g:260,t:0,life:900};
+    }
+    else if(kind==='one'){
+      this.runs+=1;this.combo=0;this.history.push('1');
+      AudioSys.hit(0.3);Render.float(pick(COMM.one),'#a5d8ff');
+      b.away={x:cx,y:hy,vx:rnd(-110,110),vy:-VH()*0.15,g:260,t:0,life:850};
+    }
+    else if(kind==='dot'){
+      this.combo=0;this.history.push('•');
+      AudioSys.hit(0.12);Render.float(pick(COMM.dot),'#adb5bd');
+      b.away={x:ballPathX(b,1),y:hy,vx:rnd(-15,15),vy:VH()*0.35,g:0,t:0,life:450}; // through to keeper
+    }
+    else if(kind==='early'){
+      this.combo=0;this.history.push('•');
+      Render.float(pick(COMM.early),'#ffd43b');
+      b.away={x:ballPathX(b,1),y:hy,vx:rnd(-15,15),vy:VH()*0.35,g:0,t:0,life:450};
+    }
+    else if(kind==='out'){
+      this.wickets++;this.combo=0;this.history.push('W');
+      Render.big('OUT!','#ff6b6b');Render.float(pick(COMM.out),'#ff6b6b');
+      Render.shake(7);AudioSys.out();this.vibe([60,50,80]);this.cheer=0.5;
+      if(o.how==='bowled'||o.noTap){
+        this.stumpFall=0.0001;                        // triggers the stump-break anim
+        b.away={x:ballPathX(b,1),y:hy,vx:rnd(-20,20),vy:VH()*0.5,g:0,t:0,life:350};
+      }else{                                          // edged — caught behind
+        b.away={x:cx+rnd(-30,30),y:hy-10,vx:rnd(-90,90),vy:-VH()*0.38,g:520,t:0,life:1300};
+      }
+    }
+
+    /* combo pop-up */
+    if((kind==='six'||kind==='four')&&this.combo>=2){
+      Render.float(pick(COMM.combo).replace('{n}',this.combo),'#ff922b');
+    }
+    /* endless-survival milestones (+5 coins every 25 runs) */
+    if(this.mode==='endless'){
+      const m=Math.floor(this.runs/25);
+      if(m>this.milestones){
+        this.milestones=m;this.bonusCoins+=5;
+        Render.float(COMM.milestone[0].replace('{n}',m*25)+' +5🪙','#ffd43b');
+        AudioSys.cheer(0.5);
+      }
+    }
+    /* winning shot → slow-motion, then confetti + fanfare */
+    if(this.target&&this.runs>=this.target&&!this.won){
+      this.won=true;
+      this.slowmoT=950;this.timeScale=0.22;
+      this.events.push({at:this.clock+700,fn:()=>{Render.confetti();AudioSys.win();}});
+    }
+    UI.updateHUD();UI.renderBallDots();
+  },
+
+  /* ---------------- between balls ---------------- */
+  afterBall(){
+    this.ballNo++;
+    if(this.won){this.endMatch(true);return;}
+    if(this.wickets>=this.wicketLimit){
+      if(this.mode==='endless'&&!this.extraLifeUsed){UI.offerExtraLife();return;}
+      this.endMatch(false);return;
+    }
+    if(this.mode!=='endless'&&this.ballNo>=this.totalBalls){
+      this.endMatch(this.runs>=this.target);return;
+    }
+    this.beginBall();
+  },
+
+  /* ---------------- match end: stars, coins, saves ---------------- */
+  endMatch(win){
+    this.state='result';this.ball=null;this.events=[];
+    AudioSys.stopAmbient();
+    const res={
+      mode:this.mode,level:this.level,win,
+      runs:this.runs,wickets:this.wickets,balls:this.ballNo,
+      sixes:this.sixes,fours:this.fours,comboMax:this.comboMax,target:this.target,
+      firstClear:false,dailyBonus:false,newBest:false,premiumMult:DB.isPremium
+    };
+    /* 3-star rating: win with balls to spare (levels & super over) */
+    res.stars=0;
+    if(this.mode==='level'&&win){
+      const left=this.totalBalls-this.ballNo;
+      res.stars=left>=2?3:left===1?2:1;
+    }
+    /* coin economy — TWEAK: every line here is the payout */
+    let coins=this.runs+this.sixes*3+this.fours*2+this.bonusCoins;
+    if(win)coins+=10;
+    if(this.comboMax>=3)coins+=this.comboMax*3;
+    if(this.mode==='level'&&win&&!DB.stars[this.level]){coins+=15;res.firstClear=true;}
+    if(this.mode==='daily'&&win&&DB.daily.date!==todayKey()){
+      coins+=25;res.dailyBonus=true;
+      DB.daily={date:todayKey(),done:true,margin:this.runs-this.target};
+    }else if(this.mode==='daily'&&win&&this.runs-this.target>(DB.daily.margin||-999)){
+      DB.daily.margin=this.runs-this.target;
+    }
+    res.coins=DB.isPremium?coins*2:coins;
+    DB.coins+=res.coins;
+    /* persist progress */
+    if(this.mode==='level'&&win)DB.stars[this.level]=Math.max(DB.stars[this.level]||0,res.stars);
+    if(this.mode==='endless'&&this.runs>DB.best.endless){DB.best.endless=this.runs;res.newBest=true;}
+    if(this.mode==='super'&&this.runs>DB.best.super){DB.best.super=this.runs;res.newBest=true;}
+    DB.matches++;
+    DB.board.push({m:this.mode,s:this.runs,d:shortDate()});
+    DB.board.sort((a,b)=>b.s-a.s);DB.board=DB.board.slice(0,10);
+    Storage.save();
+    UI.showHUD(false);
+    UI.showResult(res);
+    if(!win)AudioSys.lose();
+    /* MONETIZATION HOOK: interstitial after every 3rd match (skipped for premium) */
+    if(!DB.isPremium&&DB.matches%3===0){
+      setTimeout(()=>{showInterstitialAd(()=>{});},700);
+    }
+  },
+
+  /* ---------------- pause / resume / quit ---------------- */
+  pause(){if(this.state!=='playing')return;this.state='paused';UI.showHUD(false);UI.screen('pause');},
+  resume(){if(this.state!=='paused')return;this.state='playing';UI.closeAll();UI.showHUD(true);},
+  toMenu(){this.state='menu';this.ball=null;this.events=[];AudioSys.stopAmbient();UI.showHUD(false);UI.screen('menu');},
+
+  vibe(p){try{if(navigator.vibrate)navigator.vibrate(p);}catch(e){}}
+};
+/* =====================================================================
+   SECTION 9 · RENDER — canvas scene + all the "juice".
+   Perf notes (low-end Android friendly):
+   • crowd is pre-rendered ONCE to an offscreen canvas per stadium/theme
+   • particles are hard-capped (~330) and drawn as plain arcs/rects
+   • no shadows, no filters, no big gradients per-frame beyond a few
+   ===================================================================== */
+const Render={
+  cv:null,ctx:null,W:0,H:0,dpr:1,L:null,animT:0,
+  crowdCv:null,flashes:[],
+  parts:[],floats:[],bigs:[],
+  shakeMag:0,fwT:0,attr:{burst:false},
+
+  init(){
+    this.cv=$('#game');this.ctx=this.cv.getContext('2d');
+    const rs=()=>this.resize();
+    window.addEventListener('resize',rs);
+    window.addEventListener('orientationchange',()=>setTimeout(rs,250));
+    this.resize();
+  },
+
+  /* Responsive layout — everything anchors to viewport size (portrait-first,
+     works in any aspect). No letterboxing: the scene stretches full-bleed.
+     Vertical stack: sky strip → stands → ad boards → outfield → pitch. */
+  resize(){
+    const w=Math.max(320,window.innerWidth),h=Math.max(420,window.innerHeight);
+    this.dpr=Math.min(2,window.devicePixelRatio||1);
+    this.W=w;this.H=h;
+    this.cv.width=Math.round(w*this.dpr);this.cv.height=Math.round(h*this.dpr);
+    this.cv.style.width=w+'px';this.cv.style.height=h+'px';
+    const skyH=clamp(h*0.05,20,44);                 // visible sky strip (festival themes!)
+    const standsH=clamp(h*0.20,96,170);
+    this.L={
+      W:w,H:h,skyH,standsH,
+      boardY:skyH+standsH,fieldTop:skyH+standsH+20,
+      pitchTop:h*0.30,pitchBot:h*0.965,cx:w/2,
+      pitchTopW:clamp(w*0.09,26,48),pitchBotW:clamp(w*0.40,130,190),
+      releaseY:h*0.345,hitY:h*0.815,batY:h*0.845,stumpY:h*0.905
+    };
+    this.buildCrowd();
+  },
+
+  /* ---- pre-render the crowd (called on resize / stadium change) ---- */
+  buildCrowd(){
+    const L=this.L;if(!L)return;
+    const c=document.createElement('canvas');
+    c.width=Math.max(2,this.W);c.height=Math.max(2,Math.floor(L.standsH));
+    const x=c.getContext('2d');const st=stadiumDef();
+    const g=x.createLinearGradient(0,0,0,c.height);
+    g.addColorStop(0,shade(st.stands,-38));g.addColorStop(1,shade(st.stands,8));
+    x.fillStyle=g;x.fillRect(0,0,c.width,c.height);
+    x.fillStyle='rgba(0,0,0,0.35)';                       // tier separators
+    x.fillRect(0,c.height*0.33,c.width,3);x.fillRect(0,c.height*0.66,c.width,3);
+    for(let yy=10;yy<c.height-4;yy+=11){                  // crowd dots
+      const off=((yy/11)|0)%2?6:0;
+      for(let xx=6+off;xx<c.width-4;xx+=12){
+        if(Math.random()<0.12)continue;                   // empty seats
+        x.fillStyle=st.crowd[Math.floor(Math.random()*st.crowd.length)];
+        x.beginPath();x.arc(xx,yy+rnd(-2,2),2.6,0,7);x.fill();
+      }
+    }
+    this.crowdCv=c;
+    this.flashes=[];                                      // camera-flash spots
+    for(let i=0;i<26;i++)this.flashes.push({x:rnd(10,this.W-10),y:rnd(L.skyH+8,L.skyH+L.standsH-8),p:rnd(0,6.28)});
+  },
+
+  skyColors(){
+    const st=stadiumDef();
+    if(DB.festival==='diwali')return['#3b1d54','#ff9540'];   // dusk + diyas
+    if(DB.festival==='ipl')return['#070b1f','#16264f'];      // floodlit night
+    return[st.sky0,st.sky1];
+  },
+
+  /* =================== main draw =================== */
+  draw(rdt){
+    const ctx=this.ctx,L=this.L,W=this.W,H=this.H;
+    if(!ctx||!L)return;
+    this.animT+=rdt/1000;
+    ctx.setTransform(this.dpr,0,0,this.dpr,0,0);
+    ctx.save();
+    if(this.shakeMag>0.3)ctx.translate(rnd(-1,1)*this.shakeMag,rnd(-1,1)*this.shakeMag);
+    if(Game.timeScale<0.99){                                 // slow-mo zoom
+      const z=1+(1-Game.timeScale)*0.06;
+      ctx.translate(W/2,H*0.7);ctx.scale(z,z);ctx.translate(-W/2,-H*0.7);
+    }
+    this.drawSky(ctx);
+    this.drawStands(ctx);
+    this.drawBoards(ctx);
+    this.drawField(ctx);
+    this.drawPitch(ctx);
+    this.drawStumps(ctx,L.pitchTop+10,0,true);               // bowler's end
+    this.drawFielders(ctx);
+    this.drawStumps(ctx,L.stumpY,Game.stumpFall,false);      // batsman's end
+    this.drawBatsman(ctx);
+    this.drawBowler(ctx);
+    if(Game.state==='playing'&&Game.ball)this.drawLiveBall(ctx);
+    if(Game.state==='menu')this.drawAttract(ctx);
+    this.drawFx(ctx);
+    ctx.restore();
+    if(Game.timeScale<0.99){                                 // slow-mo vignette
+      const v=ctx.createRadialGradient(W/2,H/2,H*0.25,W/2,H/2,H*0.75);
+      v.addColorStop(0,'rgba(0,0,0,0)');
+      v.addColorStop(1,'rgba(20,5,0,'+(0.5*(1-Game.timeScale)).toFixed(3)+')');
+      ctx.fillStyle=v;ctx.fillRect(0,0,W,H);
+    }
+  },
+
+  drawSky(ctx){
+    const L=this.L,sc=this.skyColors();
+    const g=ctx.createLinearGradient(0,0,0,L.fieldTop+30);
+    g.addColorStop(0,sc[0]);g.addColorStop(1,sc[1]);
+    ctx.fillStyle=g;ctx.fillRect(-40,-40,this.W+80,L.fieldTop+70);
+    if(DB.festival!=='classic')this.drawFloods(ctx);
+    if(DB.festival==='diwali'){                              // glowing diyas on the ledge
+      for(let i=0;i<6;i++){
+        const x=this.W*(i+0.5)/6+Math.sin(this.animT*0.7+i)*10;
+        const y=L.skyH+L.standsH-6+Math.sin(this.animT*1.3+i*2)*2;
+        ctx.fillStyle='rgba(255,170,60,'+(0.5+0.3*Math.sin(this.animT*5+i)).toFixed(3)+')';
+        ctx.beginPath();ctx.arc(x,y,3,0,7);ctx.fill();
+      }
+    }
+  },
+  drawFloods(ctx){
+    const L=this.L,headY=L.skyH+10;
+    [this.W*0.16,this.W*0.84].forEach(x=>{
+      ctx.strokeStyle='#495057';ctx.lineWidth=4;
+      ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,L.boardY-10);ctx.stroke();
+      ctx.fillStyle='#212529';rr(ctx,x-16,headY-8,32,16,4);ctx.fill();
+      ctx.fillStyle='#fff9db';
+      for(let k=0;k<4;k++){ctx.beginPath();ctx.arc(x-10+k*7,headY,2.4,0,7);ctx.fill();}
+      const gl=ctx.createRadialGradient(x,headY,4,x,headY,60);
+      gl.addColorStop(0,'rgba(255,248,200,0.5)');gl.addColorStop(1,'rgba(255,248,200,0)');
+      ctx.fillStyle=gl;ctx.beginPath();ctx.arc(x,headY,60,0,7);ctx.fill();
+    });
+  },
+  drawStands(ctx){
+    const L=this.L;
+    ctx.fillStyle='rgba(0,0,0,0.4)';ctx.fillRect(0,L.skyH-3,this.W,3); // stadium roof line
+    if(this.crowdCv)ctx.drawImage(this.crowdCv,0,L.skyH);
+    const boost=Game.cheer;                                  // camera flashes go wild on big moments
+    for(const f of this.flashes){
+      const a=Math.abs(Math.sin(this.animT*2.2+f.p));
+      if(a>0.72||boost>0.1){
+        ctx.fillStyle='rgba(255,255,255,'+Math.min(0.9,a*(0.25+boost*0.75)).toFixed(3)+')';
+        ctx.beginPath();ctx.arc(f.x,f.y,2.2,0,7);ctx.fill();
+      }
+    }
+  },
+  drawBoards(ctx){
+    const L=this.L,st=stadiumDef(),y=L.boardY,h=20;
+    ctx.fillStyle=st.board;ctx.fillRect(0,y,this.W,h);
+    ctx.fillStyle='rgba(255,255,255,0.12)';ctx.fillRect(0,y,this.W,2);
+    let txt='SUPER OVER BLITZ ★ NAMASTE CRICKET ★ CHAI POINT ★ GULLY GANG ★ ';
+    if(DB.festival==='diwali')txt='शुभ दीपावली ★ '+txt;
+    if(DB.festival==='ipl')txt='NEON NIGHT LEAGUE ★ '+txt;
+    ctx.font='700 11px system-ui,sans-serif';ctx.fillStyle='rgba(255,255,255,0.85)';
+    ctx.textBaseline='middle';
+    const w=ctx.measureText(txt).width||300;
+    const off=-((this.animT*26)%w);                          // scrolling ad boards
+    for(let x=off;x<this.W;x+=w)ctx.fillText(txt,x,y+h/2+1);
+    ctx.fillStyle='rgba(0,0,0,0.25)';ctx.fillRect(0,y+h-2,this.W,2);
+  },
+  drawField(ctx){
+    const L=this.L,st=stadiumDef();
+    const g=ctx.createLinearGradient(0,L.fieldTop,0,this.H);
+    g.addColorStop(0,st.field);g.addColorStop(1,shade(st.field,-14));
+    ctx.fillStyle=g;ctx.fillRect(-40,L.fieldTop,this.W+80,this.H-L.fieldTop+40);
+    ctx.fillStyle='rgba(255,255,255,0.05)';                  // mowing stripes
+    const band=(this.H-L.fieldTop)/9;
+    for(let i=0;i<9;i+=2)ctx.fillRect(-40,L.fieldTop+i*band,this.W+80,band);
+    if(DB.festival==='ipl'){ctx.fillStyle='rgba(5,10,30,0.22)';ctx.fillRect(-40,L.fieldTop,this.W+80,this.H-L.fieldTop+40);}
+    ctx.strokeStyle='rgba(255,255,255,0.9)';ctx.lineWidth=3; // boundary rope
+    ctx.beginPath();ctx.ellipse(L.cx,L.fieldTop+26,Math.min(this.W*0.49,this.W/2-4),20,0,0,7);ctx.stroke();
+  },
+  pitchW(y){const L=this.L;const p=clamp((y-L.pitchTop)/(L.pitchBot-L.pitchTop),0,1);return lerp(L.pitchTopW,L.pitchBotW,p);},
+  drawPitch(ctx){
+    const L=this.L;
+    ctx.fillStyle='#d9b380';
+    ctx.beginPath();
+    ctx.moveTo(L.cx-L.pitchTopW/2,L.pitchTop);ctx.lineTo(L.cx+L.pitchTopW/2,L.pitchTop);
+    ctx.lineTo(L.cx+L.pitchBotW/2,L.pitchBot);ctx.lineTo(L.cx-L.pitchBotW/2,L.pitchBot);
+    ctx.closePath();ctx.fill();
+    ctx.strokeStyle='rgba(120,80,30,0.35)';ctx.lineWidth=2;ctx.stroke();
+    ctx.strokeStyle='rgba(255,255,255,0.85)';ctx.lineWidth=2;  // creases
+    [L.pitchTop+12,L.batY-14].forEach(y=>{
+      const w=this.pitchW(y);
+      ctx.beginPath();ctx.moveTo(L.cx-w/2,y);ctx.lineTo(L.cx+w/2,y);ctx.stroke();
+    });
+    ctx.fillStyle='rgba(140,100,50,0.18)';                    // worn patch
+    ctx.beginPath();ctx.ellipse(L.cx,L.hitY-6,L.pitchTopW*0.8,10,0,0,7);ctx.fill();
+  },
+  drawFielders(ctx){
+    const L=this.L,st=stadiumDef();
+    const P=[[0.12,0.30],[0.88,0.30],[0.05,0.52],[0.95,0.52],[0.27,0.22],[0.73,0.22]];
+    P.forEach((p,i)=>{
+      const x=p[0]*this.W+Math.sin(this.animT*1.4+i*2)*2;
+      const y=L.fieldTop+(this.H-L.fieldTop)*p[1];
+      ctx.fillStyle='rgba(0,0,0,0.18)';
+      ctx.beginPath();ctx.ellipse(x,y+9,7,2.5,0,0,7);ctx.fill();
+      ctx.fillStyle=shade(st.board,10);rr(ctx,x-4,y-8,8,14,3);ctx.fill();
+      ctx.fillStyle='#ffd8a8';ctx.beginPath();ctx.arc(x,y-11,3.4,0,7);ctx.fill();
+    });
+  },
+  drawStumps(ctx,y,fall,small){
+    const L=this.L;const gap=small?9:7,hh=small?18:26;
+    ctx.strokeStyle='#f4f1e0';ctx.lineWidth=small?2.5:3.5;ctx.lineCap='round';
+    for(let i=-1;i<=1;i++){
+      const x=L.cx+i*gap;
+      ctx.save();ctx.translate(x,y);
+      if(fall>0)ctx.rotate(fall*1.5*i);
+      ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(0,-hh*(1-fall*0.4));ctx.stroke();
+      ctx.restore();
+    }
+    if(fall>0&&fall<1){                                       // bails flying
+      ctx.fillStyle='#ffd43b';
+      for(let i=0;i<2;i++){
+        const bx=L.cx+(i?6:-6)+fall*26*(i?1:-1);
+        ctx.fillRect(bx,y-hh-fall*22,5,2.5);
+      }
+    }else if(fall===0){
+      ctx.fillStyle='#ffd43b';
+      ctx.fillRect(L.cx-7,y-hh-3,5,2.5);ctx.fillRect(L.cx+2,y-hh-3,5,2.5);
+    }
+  },
+  drawBatsman(ctx){
+    const L=this.L,cx=L.cx,y=L.batY;
+    /* swing animation state */
+    let ang=-0.5+Math.sin(this.animT*2.1)*0.09;              // idle waggle
+    if(Game.swingT>=0){
+      const sw=clamp((Game.clock-Game.swingT)/240,0,3);
+      if(sw<1)ang=lerp(-0.6,2.35,easeOutQuad(Math.min(1,sw*1.25)));
+      else if(sw<2.2)ang=lerp(2.35,-0.5,(sw-1)/1.2);
+    }
+    if(Game.state==='menu'){                                  // attract-mode swing
+      const a=this.attrPhase();
+      if(a.swing)ang=lerp(-0.6,2.35,easeOutQuad(a.swingP));
+    }
+    const bat=equippedBat();
+    ctx.fillStyle='rgba(0,0,0,0.25)';                         // shadow
+    ctx.beginPath();ctx.ellipse(cx,y+14,24,6,0,0,7);ctx.fill();
+    ctx.fillStyle='#ffe8cc';ctx.strokeStyle='#c3a37a';ctx.lineWidth=1.5;  // pads
+    rr(ctx,cx-12,y-26,9,30,4);ctx.fill();ctx.stroke();
+    rr(ctx,cx+3,y-26,9,30,4);ctx.fill();ctx.stroke();
+    ctx.fillStyle='#343a40';rr(ctx,cx-12,y+2,9,5,2);ctx.fill();rr(ctx,cx+3,y+2,9,5,2);ctx.fill();
+    ctx.fillStyle='#1864ab';rr(ctx,cx-13,y-56,26,32,8);ctx.fill();        // India-blue torso
+    ctx.fillStyle='#ff9933';ctx.fillRect(cx-13,y-40,26,3);                 // saffron trim
+    ctx.fillStyle='#ffd8a8';ctx.beginPath();ctx.arc(cx,y-66,8.5,0,7);ctx.fill(); // head
+    ctx.fillStyle='#212529';ctx.beginPath();ctx.arc(cx,y-67,9,Math.PI*0.95,Math.PI*2.05);ctx.fill();
+    ctx.fillRect(cx-9,y-67,18,3);                                          // helmet
+    ctx.strokeStyle='#1864ab';ctx.lineWidth=5;ctx.lineCap='round';         // arm
+    ctx.beginPath();ctx.moveTo(cx+4,y-50);ctx.lineTo(cx+15,y-44);ctx.stroke();
+    /* the bat — colours from the equipped bat */
+    const px=cx+17,py=y-44;
+    ctx.save();ctx.translate(px,py);ctx.rotate(ang);
+    ctx.fillStyle='#4a2f1d';rr(ctx,-2,-24,4,22,2);ctx.fill();              // handle
+    const bg=ctx.createLinearGradient(-7,0,7,0);
+    bg.addColorStop(0,bat.c[0]);bg.addColorStop(1,bat.c[1]);
+    ctx.fillStyle=bg;rr(ctx,-6.5,-60,13,38,5);ctx.fill();                 // blade
+    ctx.strokeStyle='rgba(0,0,0,0.3)';ctx.lineWidth=1;ctx.stroke();
+    ctx.restore();
+  },
+  drawBowler(ctx){
+    const L=this.L;let prog=0,visible=true;
+    if(Game.state==='playing'&&Game.ball){
+      const b=Game.ball;
+      if(b.phase==='pre')prog=0;
+      else if(b.phase==='windup')prog=clamp((Game.clock-b.phaseAt)/640,0,1);
+      else prog=1;
+    }else if(Game.state==='result')visible=false;
+    if(!visible)return;
+    const y=lerp(L.releaseY-78,L.releaseY-6,easeOutQuad(prog));
+    const x=L.cx+L.pitchTopW*0.55;
+    const step=(prog>0&&prog<1)?Math.sin(prog*Math.PI*6):0;
+    ctx.fillStyle='rgba(0,0,0,0.2)';
+    ctx.beginPath();ctx.ellipse(x,y+12,9,3,0,0,7);ctx.fill();
+    ctx.strokeStyle='#e8590c';ctx.lineWidth=5;ctx.lineCap='round';         // legs (run cycle)
+    ctx.beginPath();ctx.moveTo(x,y-6);ctx.lineTo(x-4+step*4,y+10);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(x,y-6);ctx.lineTo(x+4-step*4,y+10);ctx.stroke();
+    ctx.fillStyle='#e8590c';rr(ctx,x-6,y-24,12,20,5);ctx.fill();           // torso
+    ctx.fillStyle='#ffd8a8';ctx.beginPath();ctx.arc(x,y-29,5,0,7);ctx.fill();
+    let armA=-2.4;                                                          // bowling arm
+    if(prog>0.7)armA=lerp(-2.4,0.6,(prog-0.7)/0.3);
+    else if(prog>0)armA=-2.4+Math.sin(prog*Math.PI*4)*0.5;
+    ctx.strokeStyle='#e8590c';ctx.lineWidth=4;
+    ctx.beginPath();ctx.moveTo(x,y-20);ctx.lineTo(x+Math.cos(armA)*11,y-20+Math.sin(armA)*11);ctx.stroke();
+  },
+  /* the red cherry — used by live balls AND the attract mode */
+  ballSprite(ctx,x,y,r,spinAng,type,alpha){
+    if(alpha===undefined)alpha=1;
+    ctx.globalAlpha=alpha;
+    ctx.fillStyle='#c92a2a';
+    ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,0.75)';ctx.lineWidth=Math.max(1,r*0.14); // seam
+    ctx.beginPath();ctx.arc(x,y,r*0.62,spinAng,spinAng+2.2);ctx.stroke();
+    ctx.beginPath();ctx.arc(x,y,r*0.62,spinAng+Math.PI,spinAng+Math.PI+2.2);ctx.stroke();
+    ctx.fillStyle=TYPE_COLORS[type]||'#ffffff';                                 // type-coloured marker
+    ctx.beginPath();ctx.arc(x+Math.cos(spinAng*1.7)*r*0.35,y+Math.sin(spinAng*1.7)*r*0.35,Math.max(1.2,r*0.18),0,7);ctx.fill();
+    ctx.globalAlpha=1;
+  },
+  drawLiveBall(ctx){
+    const L=this.L,b=Game.ball;if(!b)return;
+    /* bowling-type cue pill — the subtle "read the delivery" hint */
+    if(b.phase==='windup'||(b.phase==='flight'&&(Game.clock-b.releaseAt)/b.travel<0.45))this.drawCue(ctx);
+    if(b.phase==='pre'||b.phase==='windup'){                  // ball in the bowler's hand
+      this.ballSprite(ctx,L.cx+L.pitchTopW*0.55+8,L.releaseY-16,5,b.spinAng,b.type,0.9);
+      return;
+    }
+    if(b.phase==='flight'){
+      const p=clamp((Game.clock-b.releaseAt)/b.travel,-0.05,1.35);
+      const pp=clamp(p,0,1);
+      const x=ballPathX(b,pp),y=ballPathY(b,pp);
+      const r=lerp(5.5,11,pp);
+      if(p>=0&&p<=1){b.trail.push({x,y});if(b.trail.length>11)b.trail.shift();}
+      const gy=lerp(L.releaseY+26,L.hitY+12,pp);              // ground shadow
+      ctx.fillStyle='rgba(0,0,0,'+(0.18-pp*0.06).toFixed(3)+')';
+      ctx.beginPath();ctx.ellipse(x,gy,r*0.85,r*0.3,0,0,7);ctx.fill();
+      this.drawTrail(ctx,b,r);
+      this.drawRing(ctx,pp);
+      this.ballSprite(ctx,x,y,r,b.spinAng,b.type,1);
+    }else if(b.phase==='aftermath'&&b.away&&b.away.t<b.away.life){
+      const a=b.away,al=1-a.t/a.life;
+      this.ballSprite(ctx,a.x,a.y,10*al+3,b.spinAng,b.type,al);
+    }
+  },
+  drawTrail(ctx,b,r){
+    if(!b.trail.length)return;
+    const tr=equippedTrail();
+    for(let i=0;i<b.trail.length-1;i++){
+      const q=(i+1)/b.trail.length;
+      let col;
+      if(tr.id==='rainbow')col='hsl('+((this.animT*140+i*26)%360)+',90%,60%)';
+      else if(tr.id==='none')col='#c92a2a';
+      else col=q>0.5?tr.c[0]:tr.c[1];
+      ctx.globalAlpha=tr.id==='none'?q*0.22:q*0.5;
+      ctx.fillStyle=col;
+      ctx.beginPath();ctx.arc(b.trail[i].x,b.trail[i].y,r*q*0.85,0,7);ctx.fill();
+    }
+    ctx.globalAlpha=1;
+  },
+  drawRing(ctx,p){                                            // shrinking timing ring
+    const L=this.L;
+    if(p<=0||p>1.12)return;
+    const rMax=Math.min(96,this.W*0.24);
+    const r=34+Math.pow(1-clamp(p,0,1),1.6)*rMax;
+    const near=p>0.78&&p<1.18;
+    ctx.strokeStyle=near?'#51cf66':'rgba(255,255,255,0.45)';
+    ctx.lineWidth=near?4:2;
+    ctx.beginPath();ctx.arc(L.cx,L.hitY,r,0,7);ctx.stroke();
+    if(near){ctx.strokeStyle='rgba(81,207,102,0.35)';ctx.lineWidth=8;
+      ctx.beginPath();ctx.arc(L.cx,L.hitY,r,0,7);ctx.stroke();}
+    ctx.strokeStyle='rgba(255,255,255,0.22)';ctx.lineWidth=1.5;   // hit zone
+    ctx.beginPath();ctx.ellipse(L.cx,L.hitY,36,9,0,0,7);ctx.stroke();
+  },
+  drawCue(ctx){
+    const L=this.L,b=Game.ball;if(!b)return;
+    const label=BALL_TYPES[b.type].icon+' '+t('bt_'+b.type);
+    ctx.font='800 13px system-ui,sans-serif';
+    const w=ctx.measureText(label).width+26;
+    const x=L.cx-w/2,y=L.pitchTop-30;
+    ctx.fillStyle='rgba(8,10,18,0.72)';rr(ctx,x,y,w,24,12);ctx.fill();
+    ctx.strokeStyle=TYPE_COLORS[b.type];ctx.lineWidth=2;rr(ctx,x,y,w,24,12);ctx.stroke();
+    ctx.fillStyle='#fff';ctx.textBaseline='middle';ctx.textAlign='center';
+    ctx.fillText(label,L.cx,y+13);
+    ctx.textAlign='left';
+  },
+
+  /* ---- attract mode: the stadium plays itself behind the menus ---- */
+  attrPhase(){
+    const ms=(this.animT*1000)%3600;
+    return{ms,
+      ball:ms>=600&&ms<1800,p:clamp((ms-600)/1200,0,1),
+      swing:ms>=1560&&ms<2300,swingP:clamp((ms-1560)/280,0,1),
+      burst:ms>=1740&&ms<1780,gone:ms>=1800&&ms<3100};
+  },
+  drawAttract(ctx){
+    const L=this.L,a=this.attrPhase();
+    if(a.ball){
+      const x=L.cx,y=lerp(L.releaseY,L.hitY,a.p),r=lerp(5.5,11,a.p);
+      this.ballSprite(ctx,x,y,r,this.animT*8,'fast',0.9);
+    }else if(a.gone){
+      const q=(a.ms-1800)/1300;
+      ctx.globalAlpha=Math.max(0,1-q);
+      this.ballSprite(ctx,L.cx-40*q,L.hitY-q*this.H*0.7,11*(1-q*0.4),this.animT*8,'fast',Math.max(0,1-q));
+      ctx.globalAlpha=1;
+    }
+    if(a.burst&&!this.attr.burst){
+      this.attr.burst=true;
+      this.burst(L.cx,L.hitY,16,['#ffd43b','#ff922b']);
+      this.big('SIX!','#ffd43b');
+    }
+    if(a.ms<600)this.attr.burst=false;
+  },
+
+  /* =================== particles / floaters / big text =================== */
+  burst(x,y,n,cols){
+    for(let i=0;i<n;i++){
+      if(this.parts.length>320)return;
+      const a=rnd(0,6.28),sp=rnd(60,240);
+      this.parts.push({type:'spark',x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp-60,g:300,
+        t:0,life:rnd(380,700),color:pick(cols),size:rnd(2,4.5),ph:rnd(0,6),flut:true});
+    }
+  },
+  confetti(){
+    const cols=['#ff9933','#ffffff','#138808','#ffd43b','#ff6b6b','#4dabf7',stadiumDef().accent];
+    for(let i=0;i<130;i++){
+      if(this.parts.length>330)break;
+      this.parts.push({type:'confetti',x:rnd(0,this.W),y:rnd(-this.H*0.25,-10),
+        vx:rnd(-30,30),vy:rnd(80,190),g:40,t:0,life:rnd(2600,3800),
+        color:pick(cols),size:rnd(5,9),rot:rnd(0,6.28),rv:rnd(-6,6),ph:rnd(0,6.28)});
+    }
+  },
+  firework(){
+    const x=rnd(this.W*0.15,this.W*0.85),y=rnd(this.H*0.06,this.H*0.24);
+    const cols=DB.festival==='ipl'?['#4dabf7','#e599f7','#99e9f2']:['#ffd43b','#ff922b','#ff6b6b','#ffe066'];
+    this.burst(x,y,24,cols);
+    AudioSys.firework();
+  },
+  big(text,color){this.bigs.push({text,color,t:0,life:1050});},
+  float(text,color){if(this.L)this.floats.push({text,color,x:this.L.cx+rnd(-26,26),y:this.L.batY-130,t:0,life:1250});},
+  shake(m){this.shakeMag=Math.max(this.shakeMag,m);},
+
+  updateFx(dt,rdt){
+    const s=dt/1000;
+    const b=Game.ball;                                        // ball spin + hit physics
+    if(b){
+      b.spinAng+=b.spinSpd*s;
+      if(b.away&&b.away.t<b.away.life){
+        const a=b.away;a.t+=s;a.x+=a.vx*s;a.y+=a.vy*s;a.vy+=a.g*s;
+      }
+    }
+    for(let i=this.parts.length-1;i>=0;i--){
+      const p=this.parts[i];p.t+=dt;
+      if(p.t>=p.life){this.parts.splice(i,1);continue;}
+      p.x+=p.vx*s;p.y+=p.vy*s;p.vy+=p.g*s;
+      if(p.type==='confetti'){p.rot+=p.rv*s;p.x+=Math.sin(p.t/130+p.ph)*22*s;}
+      else if(p.flut)p.x+=Math.sin(p.t/90+p.ph)*30*s;
+    }
+    for(let i=this.floats.length-1;i>=0;i--){this.floats[i].t+=dt;if(this.floats[i].t>=this.floats[i].life)this.floats.splice(i,1);}
+    for(let i=this.bigs.length-1;i>=0;i--){this.bigs[i].t+=dt;if(this.bigs[i].t>=this.bigs[i].life)this.bigs.splice(i,1);}
+    this.shakeMag=Math.max(0,this.shakeMag-rdt*0.012);
+    if(DB.festival!=='classic'&&Game.state==='menu'){          // ambient fireworks in menus
+      this.fwT+=rdt;
+      if(this.fwT>2400){this.fwT=0;this.firework();}
+    }
+  },
+  drawFx(ctx){
+    const W=this.W,H=this.H;
+    for(const p of this.parts){
+      const a=1-p.t/p.life;if(a<=0)continue;
+      ctx.globalAlpha=a;
+      if(p.type==='confetti'){
+        ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.rot);
+        ctx.fillStyle=p.color;ctx.fillRect(-p.size/2,-p.size*0.7,p.size,p.size*1.4);
+        ctx.restore();
+      }else{
+        ctx.fillStyle=p.color;
+        ctx.beginPath();ctx.arc(p.x,p.y,p.size*a+0.5,0,7);ctx.fill();
+      }
+    }
+    ctx.globalAlpha=1;
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    for(const f of this.floats){                              // Hinglish commentary
+      const q=f.t/f.life;
+      const a=q<0.15?q/0.15:1-Math.max(0,(q-0.6)/0.4);
+      ctx.globalAlpha=clamp(a,0,1);
+      ctx.font='800 16px system-ui,sans-serif';
+      ctx.strokeStyle='rgba(0,0,0,0.55)';ctx.lineWidth=3;
+      ctx.strokeText(f.text,f.x,f.y-q*46);
+      ctx.fillStyle=f.color;ctx.fillText(f.text,f.x,f.y-q*46);
+    }
+    ctx.globalAlpha=1;
+    for(const b of this.bigs){                                // SIX! / FOUR! / OUT!
+      const q=b.t/b.life;
+      const sc=q<0.25?easeOutBack(q/0.25):1;
+      const a=q>0.72?1-(q-0.72)/0.28:1;
+      ctx.globalAlpha=clamp(a,0,1);
+      ctx.save();ctx.translate(W/2,H*0.30);ctx.scale(sc,sc);
+      ctx.font='900 '+Math.round(W*0.16)+'px system-ui,sans-serif';
+      ctx.strokeStyle='rgba(0,0,0,0.6)';ctx.lineWidth=7;ctx.strokeText(b.text,0,0);
+      ctx.fillStyle=b.color;ctx.fillText(b.text,0,0);
+      ctx.restore();
+    }
+    ctx.globalAlpha=1;ctx.textAlign='left';ctx.textBaseline='alphabetic';
+  }
+};
+/* =====================================================================
+   SECTION 10 · UI — screens (injected into #screens), modals, tutorial,
+   daily reward, leaderboard, share. All text goes through t() so the
+   English/हिन्दी toggle re-renders everything instantly.
+   ===================================================================== */
+let toastTimer=null;
+function toast(msg){
+  const el=$('#toast');if(!el)return;
+  el.textContent=msg;el.classList.remove('hidden');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>el.classList.add('hidden'),1900);
+}
+function starTotal(){let s=0;for(const k in DB.stars)s+=DB.stars[k];return s;}
+function dailyAvailable(){return DB.login.date!==todayKey();}
+
+const UI={
+  cur:null,_res:null,_doubled:false,_tut:null,
+
+  /* ---------- screen router ---------- */
+  screen(name){
+    const host=$('#screens');
+    host.innerHTML='';
+    if(!name){this.cur=null;return;}
+    const fn=this['scr_'+name];
+    host.innerHTML='<div class="screen" data-scr="'+name+'">'+(fn?fn.call(this):'')+'</div>';
+    this.cur=name;
+    this.bind(host);
+  },
+  closeAll(){this.screen(null);$('#modalHost').innerHTML='';},
+  modal(html){
+    $('#modalHost').innerHTML='<div class="modalScr"><div class="modal">'+html+'</div></div>';
+    this.bind($('#modalHost'));
+  },
+  closeModal(){$('#modalHost').innerHTML='';},
+  bind(root){
+    root.querySelectorAll('[data-act]').forEach(el=>{
+      el.addEventListener('click',()=>{AudioSys.ensure();AudioSys.ui();this.act(el.dataset.act);});
+    });
+  },
+
+  /* ---------- action router: every button goes through here ---------- */
+  act(a){
+    const i=a.indexOf(':'),op=i<0?a:a.slice(0,i),arg=i<0?'':a.slice(i+1);
+    switch(op){
+      case 'nav':
+        if(arg==='menu')Game.toMenu();else this.screen(arg);break;
+      case 'mode':Game.start(arg);break;
+      case 'level':Game.start('level',parseInt(arg,10));break;
+      case 'pause':Game.pause();break;
+      case 'resume':Game.resume();break;
+      case 'restart':Game.start(Game.mode,Game.level);break;
+      case 'quit':Game.toMenu();break;
+      case 'mute':toggleSound();if(this.cur)this.screen(this.cur);break;
+      case 'lang':DB.lang=arg;Storage.save();this.screen(this.cur);break;
+      case 'festival':DB.festival=arg;Storage.save();Render.buildCrowd();this.screen(this.cur);break;
+      case 'buy':Shop.buy(arg);break;
+      case 'equip':Shop.equip(arg,false);break;
+      case 'buyPremium':Shop.buyPremium();break;
+      case 'confirmPremium':Shop.confirmPremium();break;
+      case 'restore':toast(t('restoreNote'));break;
+      case 'again':Game.start(Game.mode,Game.level);break;
+      case 'double':this.doubleCoins();break;
+      case 'share':shareScore(shareText(this._res));break;
+      case 'claim':this.claimDaily(parseInt(arg,10)||20);break;
+      case 'extraAd':this.grantExtraLife();break;
+      case 'extraNo':UI.closeModal();Game.endMatch(false);break;
+      case 'resetAsk':
+        this.modal('<div style="font-size:40px">🗑️</div><h2>'+t('resetProgress')+'</h2>'+
+          '<p>'+t('resetConfirm')+'</p>'+
+          '<button class="btn danger" data-act="resetDo">'+t('resetProgress')+'</button>'+
+          '<button class="btn ghost" data-act="closeModal">'+t('noThanks')+'</button>');
+        break;
+      case 'resetDo':
+        Storage.wipe();Render.buildCrowd();this.closeModal();toast(t('resetDone'));this.screen('menu');break;
+      case 'closeModal':this.closeModal();break;
+      case 'tutNext':this._tut.i++;this._tutSlide();break;
+      case 'tutEnd':this.endTutorial();break;
+    }
+  },
+
+  /* ---------- HUD ---------- */
+  showHUD(v){
+    $('#hud').classList.toggle('hidden',!v);
+    $('#tapzone').classList.toggle('hidden',!v);
+  },
+  updateHUD(){
+    $('#hudScore').innerHTML=Game.runs+'<span class="dim">/'+Game.wickets+'</span>';
+    let sub;
+    if(Game.mode==='endless')sub=t('best')+': '+DB.best.endless;
+    else if(Game.won)sub=t('chased');
+    else sub=needText(Math.max(0,Game.target-Game.runs),Math.max(0,Game.totalBalls-Game.ballNo));
+    $('#hudSub').textContent=sub+' • '+t('wickets')+' '+Game.wickets+'/'+Game.wicketLimit;
+    const cp=$('#comboPill');
+    if(Game.combo>=2){cp.classList.remove('hidden');cp.textContent='🔥 x'+Game.combo;}
+    else cp.classList.add('hidden');
+  },
+  renderBallDots(){
+    const host=$('#ballDots');if(!host)return;
+    const cls={'6':'d6','4':'d4','W':'dW','2':'dr','1':'dr','•':'dDot'};
+    let html='';
+    if(Game.mode==='endless'){
+      html=Game.history.slice(-10).map(x=>'<span class="bdot '+cls[x]+'">'+x+'</span>').join('');
+    }else{
+      for(let i=0;i<Game.totalBalls;i++){
+        const x=Game.history[i];
+        html+='<span class="bdot '+(x?cls[x]:'pend')+'">'+(x||'')+'</span>';
+      }
+    }
+    host.innerHTML=html;
+  },
+
+  /* ---------- result screen ---------- */
+  showResult(res){this._res=res;this._doubled=false;this.screen('result');},
+  doubleCoins(){
+    if(this._doubled||!this._res)return;
+    const doDouble=()=>{                                     // MONETIZATION: rewarded ad payoff
+      this._doubled=true;
+      DB.coins+=this._res.coins;Storage.save();
+      AudioSys.coin();toast('+'+this._res.coins+' 🪙');
+      this.screen('result');
+    };
+    showRewardedAd(doDouble);
+  },
+  _resLines(r){
+    const rows=[[t('runsRuns'),r.runs]];
+    if(r.sixes)rows.push([t('sixBonus'),r.sixes*3]);
+    if(r.fours)rows.push([t('fourBonus'),r.fours*2]);
+    if(r.bonusCoins)rows.push([t('milestoneBonus'),r.bonusCoins]);
+    if(r.comboMax>=3)rows.push([t('comboBonus'),r.comboMax*3]);
+    if(r.win)rows.push([t('winBonus'),10]);
+    if(r.firstClear)rows.push([t('firstClearBonus'),15]);
+    if(r.dailyBonus)rows.push([t('dailyBonus'),25]);
+    return rows.map(x=>'<div class="rl"><span>'+x[0]+'</span><span>+'+x[1]+'</span></div>').join('');
+  },
+  scr_result(){
+    const r=this._res;if(!r)return '';
+    const title=r.mode==='endless'?t('gameOver'):(r.win?(r.mode==='level'?t('levelCleared'):t('youWin')):t('youLose'));
+    const stars=r.mode==='level'?'<div class="stars">'+
+      [1,2,3].map(i=>'<span class="'+(i<=r.stars?'on':'off')+'">★</span>').join('')+'</div>':'';
+    return '<div class="resWrap">'+
+      '<div class="resEmoji">'+(r.win?'🏆':(r.mode==='endless'?'🏏':'😢'))+'</div>'+
+      '<div class="resTitle '+(r.win?'win':'lose')+'">'+title+'</div>'+
+      (r.newBest?'<div class="newBest">✨ '+t('newBest')+'</div>':'')+
+      stars+
+      '<div class="resScore">'+r.runs+'/'+r.wickets+' <span style="opacity:.6;font-size:13px">• '+r.balls+' '+t('balls')+'</span></div>'+
+      (r.target?'<div class="resTarget">'+t('target')+': '+r.target+'</div>'
+               :'<div class="resTarget">'+t('best')+': '+DB.best.endless+'</div>')+
+      '<div class="resList">'+this._resLines(r)+'</div>'+
+      '<div class="resCoins">+'+(r.coins*(this._doubled?2:1))+' 🪙'+
+        (r.premiumMult?' <span style="font-size:12px">('+t('premium2x')+')</span>':'')+'</div>'+
+      '<button class="btn big" data-act="again">'+t('playAgain')+'</button>'+  // one-tap restart
+      '<div class="btnRow">'+
+        (this._doubled?'':'<button class="btn green small" data-act="double">'+t('doubleCoins')+'</button>')+
+        '<button class="btn ghost small" data-act="share">'+t('share')+'</button>'+
+      '</div>'+
+      '<button class="btn ghost small" data-act="nav:menu">'+t('menu')+'</button>'+
+    '</div>';
+  },
+
+  /* ---------- extra life (rewarded ad hook in Endless mode) ---------- */
+  offerExtraLife(){
+    Game.state='paused';UI.showHUD(false);
+    this.modal('<div style="font-size:44px">❤️</div><h2>'+t('extraLifeQ')+'</h2>'+
+      '<button class="btn green" data-act="extraAd">'+(DB.isPremium?t('freeLife'):t('extraLifeBtn'))+'</button>'+
+      '<button class="btn ghost" data-act="extraNo">'+t('noThanks')+'</button>');
+  },
+  grantExtraLife(){
+    if(Game.state!=='paused'||Game.mode!=='endless')return;  // only from the pending modal
+    UI.closeModal();
+    const grant=()=>{
+      if(Game.state!=='paused')return;                       // ad finished after user quit
+      Game.extraLifeUsed=true;
+      Game.wickets=Math.max(0,Game.wickets-1);               // one life back
+      Game.state='playing';UI.showHUD(true);UI.updateHUD();UI.renderBallDots();
+      Game.beginBall();
+      toast('❤️ +1');
+    };
+    if(DB.isPremium)grant();else showRewardedAd(grant);      // MONETIZATION: rewarded ad
+  },
+
+  /* ---------- daily login reward ---------- */
+  showDailyReward(){
+    const streak=DB.login.date===yesterdayKey()?(DB.login.streak||0)+1:1;
+    const amt=[20,30,40,50,60,80,100][Math.min(streak-1,6)]; // TWEAK: streak payouts
+    this.modal('<div style="font-size:44px">🎁</div><h2>'+t('dailyRewardTitle')+'</h2>'+
+      '<p><b style="font-size:18px">🔥 '+streak+' '+t('dayStreak')+'</b></p>'+
+      '<button class="btn green" data-act="claim:'+amt+'">'+t('claim').replace('{n}',amt)+'</button>'+
+      '<button class="btn ghost" data-act="closeModal">'+t('comeBack')+'</button>');
+  },
+  claimDaily(amt){
+    const today=todayKey();
+    if(DB.login.date===today)return;
+    const streak=DB.login.date===yesterdayKey()?(DB.login.streak||0)+1:1;
+    DB.login={date:today,streak};
+    DB.coins+=amt;Storage.save();
+    AudioSys.coin();this.closeModal();
+    toast('+'+amt+' 🪙');
+    if(this.cur==='menu')this.screen('menu');
+  },
+
+  /* ---------- tutorial (first launch + How to Play) ---------- */
+  tutorial(first){this._tut={i:0,first:!!first};this._tutSlide();},
+  _tutSlide(){
+    const s=TUT[this._tut.i],last=this._tut.i===TUT.length-1;
+    this.modal(
+      '<div class="tutEmoji">'+s.e+'</div>'+
+      '<h2>'+t(s.k)+'</h2><p>'+t(s.kb)+'</p>'+
+      '<div class="tutDots">'+TUT.map((_,j)=>'<span class="'+(j===this._tut.i?'on':'')+'"></span>').join('')+'</div>'+
+      '<button class="btn" data-act="'+(last?'tutEnd':'tutNext')+'">'+
+        (last?(this._tut.first?t('startBatting'):t('back')):t('next'))+'</button>'+
+      (this._tut.first?'<button class="btn ghost" data-act="tutEnd">'+t('skip')+'</button>':'')
+    );
+  },
+  endTutorial(){
+    this.closeModal();
+    if(this._tut&&this._tut.first&&!DB.tutorial){
+      DB.tutorial=true;Storage.save();
+      if(dailyAvailable())this.showDailyReward();
+      else Game.start('super');
+    }
+  },
+
+  /* =================== SCREENS =================== */
+  scr_menu(){
+    return '<div class="menuWrap">'+
+      '<div class="logo">🏏</div>'+
+      '<h1 class="title">Super Over<br>Blitz</h1>'+
+      '<div class="tag">'+t('tagline')+'</div>'+
+      '<div class="pillRow">'+
+        '<span class="pill coins">🪙 '+DB.coins+'</span>'+
+        (DB.isPremium?'<span class="pill gold">👑</span>':'')+
+        '<span class="pill">🔥 '+(DB.login.streak||0)+'</span>'+
+      '</div>'+
+      '<button class="btn big" data-act="nav:modes">▶ '+t('play')+'</button>'+
+      '<div class="menuGrid">'+
+        '<button class="btnCard" data-act="nav:shop">🛒<span>'+t('shop')+'</span></button>'+
+        '<button class="btnCard" data-act="nav:board">🏆<span>'+t('leaderboard')+'</span></button>'+
+        '<button class="btnCard" data-act="nav:settings">⚙️<span>'+t('settings')+'</span></button>'+
+        '<button class="btnCard" data-act="nav:howto">❓<span>'+t('howto')+'</span></button>'+
+      '</div>'+
+      (DB.isPremium?'':'<button class="premBanner" data-act="nav:premium">👑 '+t('goPremium')+' — ₹99</button>')+
+      '<div class="ver">v1.0 • '+t('madeIn')+'</div>'+
+    '</div>';
+  },
+  scr_modes(){
+    const di=dailyInfo();
+    const dailyDone=DB.daily.date===todayKey()&&DB.daily.done;
+    return '<div class="scrHead"><h2>🎮 '+t('play')+'</h2></div>'+
+      '<button class="modeCard" data-act="mode:super"><div class="modeIc">⚡</div><div>'+
+        '<div class="modeName">'+t('superOver')+'</div><div class="modeDesc">'+t('superOverDesc')+'</div>'+
+        '<div class="modeStat">'+t('best')+': '+DB.best.super+'</div></div></button>'+
+      '<button class="modeCard" data-act="mode:endless"><div class="modeIc">♾️</div><div>'+
+        '<div class="modeName">'+t('endless')+'</div><div class="modeDesc">'+t('endlessDesc')+'</div>'+
+        '<div class="modeStat">'+t('best')+': '+DB.best.endless+'</div></div></button>'+
+      '<button class="modeCard" data-act="mode:daily"><div class="modeIc">📅</div><div>'+
+        '<div class="modeName">'+t('daily')+'</div><div class="modeDesc">'+t('dailyDesc')+'</div>'+
+        '<div class="modeStat">'+t('todayTarget')+': '+di.target+' • '+(dailyDone?t('done'):t('notDone'))+'</div></div></button>'+
+      '<button class="modeCard" data-act="nav:levels"><div class="modeIc">🎯</div><div>'+
+        '<div class="modeName">'+t('levels')+'</div><div class="modeDesc">'+t('levelsDesc')+'</div>'+
+        '<div class="modeStat">⭐ '+starTotal()+'/150</div></div></button>'+
+      '<button class="btn ghost" style="margin-top:8px" data-act="nav:menu">'+t('back')+'</button>';
+  },
+  scr_levels(){
+    let html='';
+    for(let n=1;n<=50;n++){
+      const st=DB.stars[n]||0;
+      const unlocked=n===1||(DB.stars[n-1]||0)>0;
+      html+='<button class="lvl'+(unlocked?'':' locked')+'"'+(unlocked?' data-act="level:'+n+'"':' disabled')+'>'+
+        (unlocked?'<span class="lvlN">'+n+'</span><span class="lvlStars">'+'★'.repeat(st)+'☆'.repeat(3-st)+'</span>'
+                 :'<span class="lvlN">🔒</span>')+'</button>';
+    }
+    return '<div class="scrHead"><h2>🎯 '+t('levels')+'</h2>'+
+      '<span class="pill coins">⭐ '+starTotal()+'/150</span>'+
+      '<div class="ver">'+t('levelsDesc')+'</div></div>'+
+      '<div class="lvlGrid">'+html+'</div>'+
+      '<button class="btn ghost" style="margin-top:14px" data-act="nav:modes">'+t('back')+'</button>';
+  },
+  scr_shop(){
+    const prevBat=b=>'<div style="width:14px;height:44px;border-radius:7px;background:linear-gradient(180deg,'+b.c[0]+','+b.c[1]+');box-shadow:inset 0 0 0 2px rgba(0,0,0,.2)"></div>';
+    const prevTrail=tr=>'<div style="width:40px;height:8px;border-radius:99px;background:linear-gradient(90deg,'+tr.c[0]+','+tr.c[1]+')"></div>';
+    const prevStad=s=>'<div style="width:38px;height:44px;border-radius:8px;overflow:hidden;display:flex;flex-direction:column">'+
+      '<div style="height:30%;background:'+s.stands+'"></div><div style="height:18%;background:'+s.board+'"></div><div style="height:52%;background:'+s.field+'"></div></div>';
+    const sec=(title,kind,items,prevFn)=>{
+      let h='<div class="shopSec"><div class="shopTitle">'+title+'</div>';
+      for(const it of items){
+        const owned=Shop.isOwned(kind,it.id),eq=Shop.isEquipped(kind,it.id);
+        let btn;
+        if(eq)btn='<button class="btn small green" disabled>'+t('equipped')+'</button>';
+        else if(owned)btn='<button class="btn small ghost" data-act="equip:'+kind+':'+it.id+'">'+t('equip')+'</button>';
+        else if(it.premiumOnly)btn='<button class="btn small" data-act="nav:premium">👑</button>';
+        else btn='<button class="btn small" data-act="buy:'+kind+':'+it.id+'">🪙 '+it.price+'</button>';
+        h+='<div class="shopItem'+(eq?' eq':'')+'"><div class="shopPrev">'+prevFn(it)+'</div>'+
+           '<div class="shopInfo"><div class="shopName">'+it.n+'</div><div class="shopSub">'+it.sub+'</div></div>'+btn+'</div>';
+      }
+      return h+'</div>';
+    };
+    return '<div class="scrHead"><h2>🛒 '+t('shop')+'</h2><span class="pill coins">🪙 '+DB.coins+'</span></div>'+
+      (DB.isPremium?'':'<button class="premBanner" data-act="nav:premium">👑 '+t('goPremium')+' — ₹99</button>')+
+      sec('🏏 '+t('bats'),'bats',BATS,prevBat)+
+      sec('✨ '+t('trails'),'trails',TRAILS,prevTrail)+
+      sec('🏟️ '+t('stadiums'),'stadiums',STADIUMS,prevStad)+
+      '<button class="btn ghost" style="margin-top:14px" data-act="nav:menu">'+t('back')+'</button>';
+  },
+  scr_premium(){
+    if(DB.isPremium){
+      return '<div class="menuWrap"><div style="font-size:60px">👑</div>'+
+        '<h2>'+t('premiumActive')+'</h2>'+
+        '<ul class="premFeats" style="text-align:left"><li>'+t('pf1')+'</li><li>'+t('pf2')+'</li><li>'+t('pf3')+'</li><li>'+t('pf4')+'</li></ul>'+
+        '<button class="btn ghost" data-act="nav:menu">'+t('back')+'</button></div>';
+    }
+    return '<div class="premWrap"><div class="premCard">'+
+      '<div style="font-size:56px">👑</div>'+
+      '<h2 style="margin:0">Super Over Blitz<br>Premium</h2>'+
+      '<ul class="premFeats"><li>'+t('pf1')+'</li><li>'+t('pf2')+'</li><li>'+t('pf3')+'</li><li>'+t('pf4')+'</li></ul>'+
+      '<div class="price">₹99</div>'+
+      '<button class="btn" data-act="buyPremium">'+t('buyPremium')+'</button>'+
+      '<button class="btn ghost small" data-act="restore">'+t('restore')+'</button>'+
+      '<div class="ver">'+t('premiumNote')+'</div>'+
+    '</div><button class="btn ghost" data-act="nav:menu">'+t('back')+'</button></div>';
+  },
+  scr_board(){
+    const icons={super:'⚡',endless:'♾️',daily:'📅',level:'🎯'};
+    const names={super:t('superOver'),endless:t('endless'),daily:t('daily'),level:t('levels')};
+    const rows=DB.board.map(e=>
+      '<div class="boardRow"><span>'+(icons[e.m]||'🏏')+' <b>'+names[e.m]+'</b></span>'+
+      '<span class="sc">'+e.s+'</span><span style="opacity:.6;font-size:11px">'+e.d+'</span></div>').join('');
+    return '<div class="scrHead"><h2>🏆 '+t('leaderboard')+'</h2></div>'+
+      '<div class="pillRow" style="margin-bottom:8px">'+
+        '<span class="pill">♾️ '+t('bestEndless')+': '+DB.best.endless+'</span>'+
+        '<span class="pill">⚡ '+t('bestSuper')+': '+DB.best.super+'</span>'+
+        '<span class="pill">⭐ '+t('starsTotal')+': '+starTotal()+'</span>'+
+      '</div>'+
+      (rows||'<div class="ver" style="margin:30px 0">'+t('boardEmpty')+'</div>')+
+      '<button class="btn ghost" style="margin-top:8px" data-act="nav:menu">'+t('back')+'</button>';
+  },
+  scr_settings(){
+    return '<div class="scrHead"><h2>⚙️ '+t('settings')+'</h2></div>'+
+      '<div class="setRow"><div class="setLbl">🌐 '+t('language')+'</div>'+
+        '<div class="seg"><button class="'+(DB.lang==='en'?'on':'')+'" data-act="lang:en">English</button>'+
+        '<button class="'+(DB.lang==='hi'?'on':'')+'" data-act="lang:hi">हिन्दी</button></div></div>'+
+      '<div class="setRow"><div class="setLbl">🔊 '+t('sound')+'</div>'+
+        '<button class="btn small '+(DB.sound?'green':'ghost')+'" data-act="mute">'+(DB.sound?t('on'):t('off'))+'</button></div>'+
+      '<div class="setRow" style="flex-direction:column;align-items:stretch">'+
+        '<div class="setLbl" style="margin-bottom:8px">🎉 '+t('festival')+'</div>'+
+        '<div class="festRow">'+
+          ['classic','diwali','ipl'].map(f=>
+            '<div class="festCard'+(DB.festival===f?' on':'')+'" data-act="festival:'+f+'">'+
+            '<div class="fi">'+(f==='classic'?'🏏':f==='diwali'?'🪔':'🌃')+'</div>'+
+            '<div style="font-size:11px;font-weight:800">'+t(f)+'</div></div>').join('')+
+        '</div></div>'+
+      '<div class="setRow"><div class="setLbl">🗑️ '+t('resetProgress')+'</div>'+
+        '<button class="btn small danger" data-act="resetAsk">↺</button></div>'+
+      '<button class="btn ghost" style="margin-top:10px" data-act="nav:menu">'+t('back')+'</button>'+
+      '<div class="ver">'+t('madeIn')+'</div>';
+  },
+  scr_howto(){
+    return '<div class="menuWrap" style="text-align:center">'+
+      '<h2>❓ '+t('howto')+'</h2>'+
+      TUT.map(s=>'<div class="setRow" style="text-align:left"><div><b>'+s.e+' '+t(s.k)+'</b>'+
+        '<div class="setSub">'+t(s.kb)+'</div></div></div>').join('')+
+      '<div class="setRow" style="text-align:left"><div><b>🎮 '+t('controls')+'</b>'+
+        '<div class="setSub">'+t('controlsDesc')+'</div></div></div>'+
+      '<button class="btn" data-act="nav:menu">'+t('back')+'</button></div>';
+  },
+  scr_pause(){
+    return '<div class="menuWrap">'+
+      '<h2>⏸️ '+t('paused')+'</h2>'+
+      '<div class="pill">'+t('score')+': '+Game.runs+'/'+Game.wickets+'</div>'+
+      '<button class="btn big" data-act="resume">▶ '+t('resume')+'</button>'+
+      '<button class="btn ghost" data-act="restart">🔄 '+t('restart')+'</button>'+
+      '<button class="btn ghost" data-act="quit">🏠 '+t('quit')+'</button>'+
+    '</div>';
+  }
+};
+
+/* ---------- share score: Web Share API → clipboard → toast fallback ---------- */
+function shareText(res){
+  if(!res)return'🏏 Super Over Blitz!';
+  let s='🏏 Super Over Blitz: '+res.runs+' runs';
+  if(res.mode==='level')s+=' (Level '+res.level+')';
+  if(res.mode==='endless')s+=' survival';
+  if(res.win)s+=' — WIN! 🏆';
+  return s+' Can you beat me? #SuperOverBlitz';
+}
+async function shareScore(text){
+  try{
+    if(navigator.share){await navigator.share({title:'Super Over Blitz',text});return;}
+  }catch(e){/* user cancelled or unsupported → fall through */}
+  try{
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      await navigator.clipboard.writeText(text);toast(t('copied'));return;
+    }
+  }catch(e){}
+  try{
+    const ta=document.createElement('textarea');
+    ta.value=text;document.body.appendChild(ta);ta.select();
+    document.execCommand('copy');document.body.removeChild(ta);
+    toast(t('copied'));return;
+  }catch(e){}
+  toast(text.length>46?text.slice(0,46)+'…':text);
+}
+/* =====================================================================
+   SECTION 11 · INPUT + BOOT — touch / mouse / spacebar, pause, main loop
+   ===================================================================== */
+function toggleSound(){
+  DB.sound=!DB.sound;Storage.save();
+  AudioSys.ensure();AudioSys.setMuted(!DB.sound);
+  syncMuteIcons();
+}
+function syncMuteIcons(){
+  const b=$('#hud [data-hud="mute"]');
+  if(b)b.textContent=DB.sound?'🔊':'🔇';
+}
+function initInput(){
+  /* one-tap swing: touch, mouse and pen all arrive as pointerdown */
+  $('#tapzone').addEventListener('pointerdown',e=>{e.preventDefault();Game.tap();});
+  /* any tap anywhere also unlocks Web Audio on iOS */
+  document.addEventListener('pointerdown',()=>AudioSys.ensure(),{passive:true});
+  /* keyboard: SPACE = shot (or Play Again on the result screen), ESC = pause */
+  window.addEventListener('keydown',e=>{
+    if(e.code==='Space'||e.key===' '){
+      e.preventDefault();
+      if(Game.state==='playing')Game.tap();
+      else if(Game.state==='result'&&UI.cur==='result')UI.act('again');
+      return;
+    }
+    if(e.key==='Escape'){
+      if(Game.state==='playing')Game.pause();
+      else if(Game.state==='paused')Game.resume();
+    }
+    if(e.key==='Enter'&&Game.state==='result'&&UI.cur==='result')UI.act('again');
+  });
+  /* HUD buttons (pause / mute) */
+  $('#hud').addEventListener('click',e=>{
+    const b=e.target.closest('[data-hud]');if(!b)return;
+    AudioSys.ensure();
+    if(b.dataset.hud==='pause'){AudioSys.ui();Game.pause();}
+    else if(b.dataset.hud==='mute'){toggleSound();}
+  });
+  /* auto-pause when the tab/app goes to background */
+  document.addEventListener('visibilitychange',()=>{
+    if(document.hidden&&Game.state==='playing')Game.pause();
+  });
+  /* stop long-press menus / pinch zoom on the game surface */
+  $('#stage').addEventListener('contextmenu',e=>e.preventDefault());
+}
+
+/* ---------- boot ---------- */
+function boot(){
+  Render.init();
+  initInput();
+  syncMuteIcons();
+  UI.screen('menu');
+  if(!DB.tutorial)UI.tutorial(true);            // first launch → tutorial
+  else if(dailyAvailable())UI.showDailyReward();// returning player → daily reward
+  requestAnimationFrame(loop);
+}
+let _last=performance.now();
+function loop(now){
+  const rdt=Math.min(50,now-_last);             // clamp: tab-switch safety
+  _last=now;
+  Game.update(rdt);
+  Render.draw(rdt);
+  requestAnimationFrame(loop);
+}
+boot();
+</script>
+</body>
+</html>
