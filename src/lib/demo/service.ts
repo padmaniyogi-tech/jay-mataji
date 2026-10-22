@@ -101,9 +101,18 @@ export function validateDemoQuantity(raw: number): number {
   return Math.min(Math.max(stepped, DEMO_LIMITS.min), DEMO_LIMITS.max);
 }
 
+/**
+ * Demo statuses are deliberately NOT the order state machine's vocabulary.
+ * "simulation_complete" cannot be mistaken for a delivered campaign/order.
+ */
+export type DemoStatus = "simulating" | "simulation_complete";
+
+/** Single source of truth for demo statuses; deliberately excludes fulfilment words. */
+export const DEMO_STATUSES: readonly DemoStatus[] = ["simulating", "simulation_complete"] as const;
+
 export type DemoSnapshot = {
   publicId: string;
-  status: "running" | "completed";
+  status: DemoStatus;
   handle: string;
   profileUrl: string;
   requestedQuantity: number;
@@ -117,9 +126,18 @@ export type DemoSnapshot = {
   /** Always true: this endpoint cannot describe real delivery. */
   simulated: true;
   notice: string;
+  /** Structurally impossible to be anything but 0: nothing here touches Instagram. */
+  realFollowersDelivered: 0;
+  /** Explicit statement that this run is not a fulfilment record. */
+  deliveryStatus: "not_delivered";
+  deliveryMessage: string;
 };
 
 export const DEMO_NOTICE = "Demo simulation only — no real Instagram followers are delivered.";
+
+/** Shown next to every result so a simulator count is never read as delivery. */
+export const DEMO_DELIVERY_MESSAGE =
+  "No real followers were delivered. This run is a simulation stored outside the order and delivery records.";
 
 /**
  * Pure progress computation so the timeline is deterministic and unit-testable.
@@ -149,10 +167,12 @@ export function computeDemoProgress(
 
 export function toSnapshot(run: DemoRun, now: Date = new Date()): DemoSnapshot {
   const progress = computeDemoProgress(run, now);
-  const completed = run.status === "completed" || progress.completed;
+  // Legacy rows used "running"/"completed"; normalise them to the explicit vocabulary.
+  const legacyCompleted = run.status === "completed" || run.status === "simulation_complete";
+  const completed = legacyCompleted || progress.completed;
   return {
     publicId: run.publicId,
-    status: completed ? "completed" : "running",
+    status: completed ? "simulation_complete" : "simulating",
     handle: run.targetHandle,
     profileUrl: run.targetUrl,
     requestedQuantity: run.requestedQuantity,
@@ -165,6 +185,9 @@ export function toSnapshot(run: DemoRun, now: Date = new Date()): DemoSnapshot {
     completedAt: run.completedAt ? new Date(run.completedAt).toISOString() : null,
     simulated: true,
     notice: DEMO_NOTICE,
+    realFollowersDelivered: 0,
+    deliveryStatus: "not_delivered",
+    deliveryMessage: DEMO_DELIVERY_MESSAGE,
   };
 }
 
@@ -206,7 +229,7 @@ export async function createDemoRun(input: {
       targetUrl: normalized.profileUrl,
       requestedQuantity: quantity,
       durationSeconds: DEMO_LIMITS.durationSeconds,
-      status: "running",
+      status: "simulating",
       ipHash,
       startedAt: new Date(),
     })
@@ -224,11 +247,11 @@ export async function getDemoRun(publicId: string): Promise<DemoSnapshot | null>
 
   const snapshot = toSnapshot(run);
   // Persist completion once so the result is stable on later reads.
-  if (snapshot.status === "completed" && run.status !== "completed") {
+  if (snapshot.status === "simulation_complete" && run.status !== "simulation_complete") {
     await db
       .update(demoRuns)
-      .set({ status: "completed", simulatedDelivered: run.requestedQuantity, completedAt: new Date() })
-      .where(and(eq(demoRuns.id, run.id), eq(demoRuns.status, "running")));
+      .set({ status: "simulation_complete", simulatedDelivered: run.requestedQuantity, completedAt: new Date() })
+      .where(and(eq(demoRuns.id, run.id), eq(demoRuns.status, run.status)));
     return { ...snapshot, completedAt: new Date().toISOString() };
   }
   return snapshot;
@@ -236,41 +259,87 @@ export async function getDemoRun(publicId: string): Promise<DemoSnapshot | null>
 
 export type RealDeliveryStatus = {
   available: boolean;
-  /** Never includes secrets — only names the admin already sees in the console. */
-  providers: Array<{ name: string; kind: string; health: string }>;
+  /**
+   * Every provider that could plausibly deliver `followers`, with the reason it cannot
+   * currently be used. Names and health only — never credentials or secrets.
+   */
+  candidates: Array<{ key: string; name: string; kind: string; health: string; enabled: boolean; usable: boolean; reason: string }>;
   message: string;
+  /** Compliant path to real reach — never "buy followers". */
+  alternative: string;
 };
 
+/** Exact wording required wherever real delivery is not possible. */
+export const REAL_DELIVERY_UNAVAILABLE = "Real delivery unavailable — provider not configured.";
+
 /**
- * Reports whether a *genuine* delivery provider is configured for the `followers` service.
- * A provider counts only if it is enabled, healthy and not the local simulator/manual row.
+ * Reports whether a *genuine* delivery provider is operational for the `followers` service.
+ *
+ * A provider counts only when it is an external integration (Meta Ads or an approved
+ * agency), enabled, not `unconfigured`/`down`, actually holding credentials, and claiming
+ * the `followers` capability. The local simulator and the manual/creator-desk provider
+ * never qualify: neither can add followers to an Instagram account, so counting them would
+ * be a false claim.
  */
 export async function getRealDeliveryStatus(): Promise<RealDeliveryStatus> {
+  const alternative =
+    "Compliant alternative: run an Instagram or Meta advertising campaign to reach real, interested people. Genuine followers follow when the creative, offer and audience are right — that is promotion, not manufactured engagement, and Amplifi quotes and tracks it as a campaign rather than a guaranteed count.";
+
   const unavailable: RealDeliveryStatus = {
     available: false,
-    providers: [],
-    message:
-      "Real delivery is unavailable in this deployment: no authorised delivery provider is configured for Instagram followers. This demo cannot add followers to any Instagram account.",
+    candidates: [],
+    message: `${REAL_DELIVERY_UNAVAILABLE} No authorised Instagram growth provider is enabled in this deployment, so nothing on this site can add followers to an Instagram account.`,
+    alternative,
   };
+
   try {
     await getDbAsync();
-    const rows = await db.select().from(providers).where(eq(providers.enabled, true));
-    // Only genuine external delivery integrations count. `mock` is the local simulator and
-    // `manual` merely lets staff assign a human — neither can add followers to an account,
-    // so treating them as "real delivery" would be a false claim.
-    const live = rows.filter(
-      (p) =>
-        (p.kind === "meta_ads" || p.kind === "agency") &&
-        p.health === "healthy" &&
-        Array.isArray(p.supportedKinds) &&
-        (p.supportedKinds as string[]).includes("followers"),
-    );
-    if (live.length === 0) return unavailable;
+    const rows = await db.select().from(providers);
+    const external = rows.filter((p) => p.kind === "meta_ads" || p.kind === "agency");
+
+    const candidates = external.map((p) => {
+      const supportsFollowers = Array.isArray(p.supportedKinds)
+        ? (p.supportedKinds as string[]).includes("followers")
+        : false;
+      const configured = p.health !== "unconfigured" && p.health !== "down";
+      const usable = p.enabled && configured && supportsFollowers;
+      let reason = "Usable for paid campaigns";
+      if (!configured) reason = p.health === "unconfigured" ? "Credentials not configured" : "Health check failing";
+      else if (!p.enabled) reason = "Disabled by an administrator";
+      else if (!supportsFollowers) reason = "Does not support the followers service";
+      return {
+        key: p.key,
+        name: p.name,
+        kind: p.kind,
+        health: p.health,
+        enabled: p.enabled,
+        usable,
+        reason,
+      };
+    });
+
+    const live = candidates.filter((c) => c.usable);
+    if (live.length === 0) {
+      const detail =
+        candidates.length === 0
+          ? "No Meta Ads or agency adapter is installed."
+          : candidates
+              .map((c) => `${c.name} (${c.kind}) is ${c.enabled ? "enabled" : "disabled"} and ${c.health} — ${c.reason.toLowerCase()}.`)
+              .join(" ");
+      return {
+        ...unavailable,
+        candidates,
+        // Keep the required sentence first so the UI always shows it verbatim.
+        message: `${REAL_DELIVERY_UNAVAILABLE} ${detail} Nothing on this site can add followers to an Instagram account.`,
+      };
+    }
+
     return {
       available: true,
-      providers: live.map((p) => ({ name: p.name, kind: p.kind, health: p.health })),
+      candidates,
       message:
-        "A delivery provider is configured for this service. Real campaigns are ordered from the customer dashboard with payment and manual review — never from this public demo.",
+        "A delivery provider is configured for real campaigns. Real orders require the customer dashboard, payment and provider review — this public demo never places them, and demo runs never touch delivery records.",
+      alternative,
     };
   } catch (err) {
     logger.warn("demo_provider_status_failed", { message: (err as Error).message });

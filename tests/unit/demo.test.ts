@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEMO_DELIVERY_MESSAGE,
   DEMO_LIMITS,
   DEMO_NOTICE,
+  DEMO_STATUSES,
   DemoInputError,
   computeDemoProgress,
   normalizeDemoTarget,
@@ -116,7 +118,7 @@ describe("toSnapshot", () => {
     requestedQuantity: 500,
     simulatedDelivered: 0,
     durationSeconds: 30,
-    status: "running" as const,
+    status: "simulating",
     ipHash: null,
     startedAt: new Date("2026-01-01T00:00:00.000Z"),
     completedAt: null,
@@ -128,16 +130,56 @@ describe("toSnapshot", () => {
     expect(snapshot.simulated).toBe(true);
     expect(snapshot.notice).toBe(DEMO_NOTICE);
     expect(DEMO_NOTICE).toMatch(/no real instagram followers/i);
-    expect(snapshot.status).toBe("running");
+    expect(snapshot.status).toBe("simulating");
     expect(snapshot.simulatedDelivered).toBe(166);
   });
 
-  it("forces a completed snapshot to the full requested quantity", () => {
+  it("never reports a real follower as delivered", () => {
+    for (const at of [0, 5_000, 30_000, 90_000]) {
+      const snapshot = toSnapshot(base, new Date(base.startedAt.getTime() + at));
+      expect(snapshot.realFollowersDelivered).toBe(0);
+      expect(snapshot.deliveryStatus).toBe("not_delivered");
+      expect(snapshot.deliveryMessage).toBe(DEMO_DELIVERY_MESSAGE);
+      expect(DEMO_DELIVERY_MESSAGE).toMatch(/no real followers were delivered/i);
+    }
+  });
+
+  it("uses simulation vocabulary that cannot be mistaken for a delivered order", () => {
+    const running = toSnapshot(base, new Date("2026-01-01T00:00:10.000Z"));
+    const done = toSnapshot(base, new Date("2026-01-01T00:01:00.000Z"));
+
+    expect(running.status).toBe("simulating");
+    expect(done.status).toBe("simulation_complete");
+
+    for (const status of [running.status, done.status]) {
+      expect(DEMO_STATUSES).toContain(status);
+      // Nothing in the demo vocabulary may claim fulfilment.
+      expect(["completed", "delivered", "fulfilled", "cancelled"]).not.toContain(status);
+    }
+  });
+
+  it("forces a finished simulation to the full requested quantity but zero real delivery", () => {
     const snapshot = toSnapshot(base, new Date("2026-01-01T00:01:00.000Z"));
-    expect(snapshot.status).toBe("completed");
+    expect(snapshot.status).toBe("simulation_complete");
     expect(snapshot.percent).toBe(100);
     expect(snapshot.simulatedDelivered).toBe(500);
     expect(snapshot.remaining).toBe(0);
+    expect(snapshot.realFollowersDelivered).toBe(0);
+  });
+
+  it("maps legacy row statuses onto the new vocabulary", () => {
+    const legacyRunning = toSnapshot(
+      { ...base, status: "running" },
+      new Date("2026-01-01T00:00:10.000Z"),
+    );
+    expect(legacyRunning.status).toBe("simulating");
+
+    const legacyCompleted = toSnapshot(
+      { ...base, status: "completed", simulatedDelivered: 500 },
+      new Date("2026-01-01T00:01:00.000Z"),
+    );
+    expect(legacyCompleted.status).toBe("simulation_complete");
+    expect(legacyCompleted.realFollowersDelivered).toBe(0);
   });
 
   it("keeps the demo envelope small enough to be a simulation, not a bulk tool", () => {

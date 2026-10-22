@@ -68,6 +68,6 @@ export const RATE_LIMITS = {
   upload: { limit: 20, windowSeconds: 60 * 60 },
   admin: { limit: 240, windowSeconds: 60 },
   /** Public demo surface: cheap, but anonymous, so keep it tight per IP. */
-  demoStart: { limit: 15, windowSeconds: 10 * 60 },
+  demoStart: { limit: 30, windowSeconds: 10 * 60 },
   demoStatus: { limit: 240, windowSeconds: 10 * 60 },
 } as const;

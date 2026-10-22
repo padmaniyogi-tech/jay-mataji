@@ -45,6 +45,24 @@ delivery is available. It returns `available: true` only when a provider row is 
 The bundled `mock` (simulator) and `manual` (staff assignment) providers are explicitly
 excluded — neither can add followers to an account.
 
+### Verified provider state in this deployment (checked 2026-10-22)
+
+| Provider | Kind | Enabled | Health | Why it cannot deliver followers |
+| --- | --- | --- | --- | --- |
+| Demo simulator | `mock` | yes | healthy | Generates numbers with a timer; never contacts Instagram |
+| Campaign team (creator assignment) | `manual` | yes | healthy | Staff assign a human creator; no automated follower delivery |
+| Meta Ads (Marketing API) | `meta_ads` | **no** | **unconfigured** | No `META_ACCESS_TOKEN` / ad account configured |
+| Approved promotional agency | `agency` | **no** | **unconfigured** | No agency base URL / API key / webhook secret |
+
+Consequently the demo page renders the required sentence:
+**“Real delivery unavailable — provider not configured.”**
+
+The supported compliant route to real reach is an **advertising campaign** (Meta/Instagram ads)
+that puts content in front of real people. That is promotion — reputation, reach and discovery —
+not manufactured engagement, and no legitimately authorised API can add followers to an account
+on demand. Any vendor promising guaranteed follower counts through an API is selling fake
+accounts or engagement automation, which this product will not integrate.
+
 To ever claim real follower delivery you must:
 
 1. Contract a legitimate provider (Meta ad campaign or an approved agency) and configure its

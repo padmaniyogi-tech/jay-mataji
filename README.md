@@ -42,16 +42,42 @@ Open **`/demo`** for a no-login, no-payment walkthrough of the campaign workflow
   payment, no invoice and no provider submission — and the page animates progress and a
   result screen.
 - Every screen states **“Demo simulation only — no real Instagram followers are delivered.”**
-  Progress is a server-side timer, not a measurement, and the result explicitly tells you the
-  account's real follower count is unchanged.
-- The page also reports whether **real delivery** is available. It only says yes when an
-  enabled, healthy `meta_ads` or `agency` provider supports `followers`; the local simulator
-  and the manual-assignment provider never count. In the default install it says
-  *real delivery is unavailable*.
+  Progress is a server-side timer, not a measurement.
+- Results are reported in two separate numbers: **simulated count** and
+  **“Real followers added: 0”**. The API always returns `realFollowersDelivered: 0` and
+  `deliveryStatus: "not_delivered"`.
+- Statuses use simulation vocabulary only — `simulating` → `simulation_complete`. They can
+  never read as `completed`, `delivered` or `fulfilled`, and the result is badged
+  **“SIMULATION COMPLETE · NOT A DELIVERY”**.
+- The page also reports whether **real delivery** is available, naming each candidate provider
+  and the exact reason it cannot be used. It only says yes when an enabled, healthy
+  `meta_ads` or `agency` provider supports `followers`; the local simulator and the
+  manual-assignment provider never count. With the default install the page prints
+  **“Real delivery unavailable — provider not configured.”**
+- A compliant alternative (an advertising campaign to reach real people) is offered next to
+  that message.
 
-Guard rails: Zod validation, per-IP rate limit (15 per 10 min) plus a 20/hour per-IP cap in the
-database, quantity envelope enforced server-side, same-origin CSRF check, hashed client IPs,
-and no link whatsoever from a demo run to revenue, invoices or provider submission.
+Guard rails: Zod validation, per-IP rate limit (30 per 10 min) plus a 20/hour per-IP cap in the
+database, quantity envelope enforced server-side, same-origin CSRF check, hashed client IPs, a
+CHECK constraint tying `simulated_delivered` to `requested_quantity`, and no link whatsoever from
+a demo run to revenue, invoices or provider submission.
+
+### Hydration warnings and browser extensions
+
+If the console shows a hydration mismatch on `<body>` listing attributes such as `bis_status`,
+`bis_frame_id`, `bis_body_id` or `__processed_*`, that is a **browser extension** mutating the
+DOM before React hydrates — not this application:
+
+- The server-rendered HTML contains `<body class="min-h-screen">` and **none** of those
+  attributes (`curl -s localhost:3000/ | grep -c bis_` → `0`).
+- No source file mentions them, and `src/app/layout.tsx` is fully static with no client code.
+- `tests/unit/hydration.test.ts` renders real components with `react-dom/server`, hydrates them
+  in jsdom and fails on any mismatch; `tests/unit/hydration-guards.test.ts` keeps the codebase
+  free of `suppressHydrationWarning`.
+
+Confirm it yourself in a private window with extensions disabled (or a fresh profile): the
+warning disappears. Reporting it to the extension vendor is the only real fix; suppressing it in
+the app would hide genuine mismatches, so it is deliberately not done.
 
 ## 2. Hard product rules enforced in code
 

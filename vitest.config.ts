@@ -4,7 +4,7 @@ import path from "node:path";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["tests/**/*.test.ts"],
+    include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
     exclude: ["tests/e2e/**", "node_modules/**"],
     testTimeout: 30_000,
     hookTimeout: 60_000,
@@ -18,6 +18,9 @@ export default defineConfig({
       // Tests never talk to a real database server or the real payment gateway.
     },
   },
+  // Next uses `jsx: preserve`; tests compile JSX with the automatic runtime so components
+  // render without a global React import.
+  esbuild: { jsx: "automatic" },
   resolve: {
     alias: { "@": path.resolve(__dirname, "src") },
   },

@@ -44,6 +44,13 @@ async function api(path: string, init: { method?: string; body?: unknown; auth?:
   return { status: res.status, json };
 }
 
+/** Fetches a page as HTML (the `api` helper always parses JSON). */
+async function page(path: string) {
+  const res = await fetch(`${BASE_URL}${path}`, { headers: { origin: BASE_URL }, redirect: "manual" });
+  const html = await res.text();
+  return { status: res.status, html };
+}
+
 async function main() {
   console.log(`\nAmplifi HTTP smoke test → ${BASE_URL}\n`);
 
@@ -125,6 +132,59 @@ async function main() {
   if (order?.measurementSource === "demo_simulation") {
     check("demo data is labelled", true, "measurementSource=demo_simulation → UI renders DEMO DATA badge");
   }
+
+  /* ------------------------------- public demo ------------------------------ */
+  // The demo must work with no session (logged out above), and must never look like delivery.
+  const demoPage = await page("/demo");
+  check("demo page is public", demoPage.status === 200, `status=${demoPage.status}`);
+  check(
+    "demo page states it is a simulation",
+    /Demo simulation only — no real Instagram followers are delivered/i.test(demoPage.html),
+  );
+  check(
+    "demo page reports real delivery unavailability",
+    /Real delivery unavailable — provider not configured|A delivery provider is configured/i.test(demoPage.html),
+  );
+
+  const demoRun = await api("/api/demo/runs", {
+    method: "POST",
+    body: { target: "@amplifi_smoke", quantity: 500 },
+    auth: false,
+  });
+  const run = demoRun.json?.data?.run;
+  check(
+    "demo run starts without login or payment",
+    demoRun.status === 200 && typeof run?.publicId === "string",
+    run?.publicId,
+  );
+  check("demo run is labelled simulated", run?.simulated === true && run?.notice?.includes("no real Instagram followers"));
+  check(
+    "demo run claims zero real followers",
+    run?.realFollowersDelivered === 0 && run?.deliveryStatus === "not_delivered",
+  );
+  check(
+    "demo status vocabulary cannot mean delivered",
+    ["simulating", "simulation_complete"].includes(run?.status),
+    `status=${run?.status}`,
+  );
+
+  const demoStatus = await api(`/api/demo/runs/${run?.publicId}`, { auth: false });
+  check(
+    "demo progress is readable and stays simulated",
+    demoStatus.status === 200 && demoStatus.json?.data?.run?.simulated === true,
+  );
+
+  const demoNotFound = await api("/api/demo/runs/DEMO-NOTREAL1", { auth: false });
+  check("unknown demo reference is rejected", demoNotFound.status === 404, `status=${demoNotFound.status}`);
+
+  // Cross-check the isolation claim: a demo run must never appear in the order API.
+  const ordersAfterDemo = await api("/api/orders");
+  check(
+    "demo runs never appear in order records",
+    ordersAfterDemo.status === 401 ||
+      !JSON.stringify(ordersAfterDemo.json ?? {}).includes(String(run?.publicId ?? "DEMO-")),
+    `status=${ordersAfterDemo.status}`,
+  );
 
   await api("/api/auth/logout", { method: "POST", body: {} });
   const afterLogout = await api("/api/orders");
