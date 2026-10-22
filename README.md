@@ -172,7 +172,7 @@ src/
 drizzle/                   SQL migrations (applied exactly once, hash-checked)
 tests/                     unit + integration (vitest), e2e (playwright)
 scripts/                   migrate, seed, reset, create-user, HTTP smoke test
-docs/                      deployment, provider onboarding, security checklist, external setup
+docs/                      deployment, provider onboarding, security checklist, external setup, project report
 ```
 
 ### Order lifecycle
@@ -264,6 +264,7 @@ real payment gateway.
 - [`docs/provider-onboarding.md`](docs/provider-onboarding.md) — adapter contract and "live" criteria.
 - [`docs/security-checklist.md`](docs/security-checklist.md) — implemented vs. still needed.
 - [`docs/external-setup.md`](docs/external-setup.md) — every credential, approval and test outstanding.
+- [`docs/project-report.md`](docs/project-report.md) — final delivery report: implemented scope, files, commands, test results, live vs. mocked integrations, blockers.
 
 ## 10. Licence / responsible use
 

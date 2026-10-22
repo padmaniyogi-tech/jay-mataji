@@ -29,6 +29,8 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Allow the hosted preview / tunnelled dev origins used by Arena and similar sandboxes.
+  allowedDevOrigins: ["*.e2b.app", "*.arena.ai", "localhost", "127.0.0.1"],
   poweredByHeader: false,
   serverExternalPackages: ["@electric-sql/pglite", "pg", "razorpay", "nodemailer", "bcryptjs"],
   eslint: { ignoreDuringBuilds: true },
