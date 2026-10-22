@@ -660,6 +660,39 @@ export const uploads = pgTable(
 );
 
 /* -------------------------------------------------------------------------- */
+/* Public demo runs (isolated from orders/payments)                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Anonymous "test Instagram followers" demo runs.
+ *
+ * Deliberately NOT the orders table: a demo run has no user, no money, no payment
+ * record, no provider submission and no invoice, so it can never be reported as a
+ * paid production campaign or included in revenue metrics. Progress is derived from
+ * elapsed time on read, so nothing is queued and no worker capacity is consumed.
+ */
+export const demoRuns = pgTable(
+  "demo_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    publicId: varchar("public_id", { length: 24 }).notNull(),
+    targetHandle: varchar("target_handle", { length: 30 }).notNull(),
+    targetUrl: text("target_url").notNull(),
+    requestedQuantity: integer("requested_quantity").notNull(),
+    /** Simulated only — never a measurement of a real Instagram account. */
+    simulatedDelivered: integer("simulated_delivered").notNull().default(0),
+    durationSeconds: integer("duration_seconds").notNull().default(45),
+    status: varchar("status", { length: 20 }).notNull().default("running"),
+    /** Hashed client IP for abuse detection; the raw address is never stored. */
+    ipHash: varchar("ip_hash", { length: 64 }),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("demo_runs_public_id_key").on(t.publicId), index("demo_runs_created_idx").on(t.createdAt)],
+);
+
+/* -------------------------------------------------------------------------- */
 /* Relations (query convenience)                                              */
 /* -------------------------------------------------------------------------- */
 
@@ -687,4 +720,5 @@ export type SupportTicket = typeof supportTickets.$inferSelect;
 export type TicketMessage = typeof ticketMessages.$inferSelect;
 export type Job = typeof jobs.$inferSelect;
 export type Upload = typeof uploads.$inferSelect;
+export type DemoRun = typeof demoRuns.$inferSelect;
 export type UserRole = User["role"];

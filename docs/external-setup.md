@@ -29,3 +29,27 @@ described to a customer as "live" until the stated test has actually been perfor
 5. Never claim a provider integration is live before credentials, calls and webhooks are
    tested and the health check turns `healthy`.
 6. Never guarantee follower counts, likes, views or virality.
+
+
+## Public demo (`/demo`) and what "real delivery" means
+
+The public demo page is a **simulation only**. It is safe to expose because:
+
+- it writes to `demo_runs`, a table with no user, payment, invoice or provider reference;
+- its progress is a timer, never a measurement of an Instagram account;
+- it cannot place orders or reach any delivery adapter.
+
+`getRealDeliveryStatus()` in `src/lib/demo/service.ts` decides whether the page may say real
+delivery is available. It returns `available: true` only when a provider row is **enabled**,
+**healthy**, of kind `meta_ads` or `agency`, and lists `followers` in `supported_kinds`.
+The bundled `mock` (simulator) and `manual` (staff assignment) providers are explicitly
+excluded — neither can add followers to an account.
+
+To ever claim real follower delivery you must:
+
+1. Contract a legitimate provider (Meta ad campaign or an approved agency) and configure its
+   credentials through the admin console (stored encrypted) or environment variables.
+2. Run a health check until the provider reports `healthy`.
+3. Place one real, paid test order and independently verify the delivered result
+   (provider evidence + an actual profile measurement). Until that verification exists,
+   `verifiedCount` stays `null` and the UI prints **"Metric unavailable"**.

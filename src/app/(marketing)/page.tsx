@@ -53,8 +53,8 @@ export default async function HomePage() {
               <ButtonLink href="/services" size="lg">
                 Browse services <ArrowRight className="h-4 w-4" />
               </ButtonLink>
-              <ButtonLink href="/how-it-works" size="lg" variant="secondary">
-                See how delivery works
+              <ButtonLink href="/demo" size="lg" variant="secondary">
+                Try the 45-second demo <Sparkles className="h-4 w-4" />
               </ButtonLink>
             </div>
             <dl className="mt-9 grid grid-cols-3 gap-4 border-t border-line pt-6 text-sm">

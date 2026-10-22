@@ -5,6 +5,7 @@ import type { SessionUser } from "@/lib/auth/session";
 import { isStaff } from "@/lib/auth/permissions";
 
 const NAV = [
+  { href: "/demo", label: "Try demo" },
   { href: "/services", label: "Services" },
   { href: "/how-it-works", label: "How it works" },
   { href: "/contact", label: "Contact" },

@@ -26,11 +26,32 @@ demo data is always rendered as **DEMO DATA — NOT REAL INSTAGRAM ENGAGEMENT**.
 | Agency adapter (HMAC webhooks) | Implemented, **unconfigured** (needs contract + credentials) |
 | Customer dashboard, order timeline, measurements, reports, receipts, support, settings | Working |
 | Admin console: orders, refunds, providers, services, coupons, customers, tickets, audit, settings | Working |
+| Public demo page (`/demo`): no login, no payment, simulated follower run | Working — clearly labelled simulation |
 | Notifications (in-app + email outbox) | Working |
 | Tests: unit + queue integration + HTTP smoke + Playwright specs | Working (Playwright needs a browser) |
 
 Read [`docs/external-setup.md`](docs/external-setup.md) before promising anything to a
 customer. It lists every credential, approval and test still required.
+
+## 1a. The 45-second public demo (`/demo`)
+
+Open **`/demo`** for a no-login, no-payment walkthrough of the campaign workflow.
+
+- Enter an Instagram username or public profile URL and a quantity (100–5,000, step 100).
+- **Start Demo** creates a row in the isolated `demo_runs` table — no user, no order, no
+  payment, no invoice and no provider submission — and the page animates progress and a
+  result screen.
+- Every screen states **“Demo simulation only — no real Instagram followers are delivered.”**
+  Progress is a server-side timer, not a measurement, and the result explicitly tells you the
+  account's real follower count is unchanged.
+- The page also reports whether **real delivery** is available. It only says yes when an
+  enabled, healthy `meta_ads` or `agency` provider supports `followers`; the local simulator
+  and the manual-assignment provider never count. In the default install it says
+  *real delivery is unavailable*.
+
+Guard rails: Zod validation, per-IP rate limit (15 per 10 min) plus a 20/hour per-IP cap in the
+database, quantity envelope enforced server-side, same-origin CSRF check, hashed client IPs,
+and no link whatsoever from a demo run to revenue, invoices or provider submission.
 
 ## 2. Hard product rules enforced in code
 
