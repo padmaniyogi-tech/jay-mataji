@@ -112,7 +112,30 @@ npm run worker        # long-lived
 npm run worker:once   # one batch (useful after seeding)
 ```
 
-### Local troubleshooting
+### Opening the app from a hosted/sandbox environment
+
+`http://localhost:3000` only works when the dev server runs on **your own machine**.
+In a hosted sandbox (Arena, E2B, Codespaces, Gitpod) the server runs remotely, so
+`localhost` in your browser points at your laptop and shows `ERR_CONNECTION_REFUSED`.
+
+Use the sandbox's preview URL instead — for E2B-style hosts it is:
+
+```
+https://<port>-<sandbox-id>.e2b.app      e.g. https://3000-iasoomhd6bxyb4wjhsrd2.e2b.app
+```
+
+The server must bind `0.0.0.0` (the `dev` script already does). Two things also have
+to be true, and both are configured in `next.config.ts`:
+
+- `allowedDevOrigins` includes the preview host, otherwise Next.js dev rejects
+  cross-origin/HMR requests.
+- The page may **not** send `X-Frame-Options: DENY` or `frame-ancestors 'none'`,
+  otherwise an embedded preview pane shows "refused to connect". Framing is
+  therefore allowed automatically outside production; for a production-mode
+  preview set `ALLOW_EMBED=1`. Real production deployments keep the hardened
+  `DENY` / `frame-ancestors 'none'` defaults.
+
+## Local troubleshooting
 
 - **`Aborted(). Build with -sASSERTIONS` / 500 on every route** — the PGlite data directory was
   left in a crashed state (typically an abrupt kill). Recreate the local database:
