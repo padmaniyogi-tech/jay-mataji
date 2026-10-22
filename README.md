@@ -168,8 +168,21 @@ In a hosted sandbox (Arena, E2B, Codespaces, Gitpod) the server runs remotely, s
 Use the sandbox's preview URL instead — for E2B-style hosts it is:
 
 ```
-https://<port>-<sandbox-id>.e2b.app      e.g. https://3000-iasoomhd6bxyb4wjhsrd2.e2b.app
+https://<port>-<sandbox-id>.e2b.app      e.g. https://3000-<sandbox-id>.e2b.app
 ```
+
+The sandbox ID changes every time the sandbox is recreated, so never hard-code it. Read the
+current value before sharing a link:
+
+```bash
+cat /var/run/e2b/.E2B_SANDBOX_ID     # or: echo $E2B_SANDBOX_ID
+```
+
+A link that returns **`502 Sandbox not found`** is pointing at a *deleted* sandbox — the ID is
+stale, not the code. A link that returns **`403 Missing traffic access token`** is reaching a
+live sandbox whose public access is restricted by platform policy; open it through the
+platform's authenticated preview pane (Arena: the LIVE PREVIEW pane for port 3000) instead of
+pasting the bare URL into a new tab.
 
 The server must bind `0.0.0.0` (the `dev` script already does). Two things also have
 to be true, and both are configured in `next.config.ts`:
