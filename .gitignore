@@ -1,0 +1,31 @@
+# dependencies
+node_modules/
+.pnpm-store/
+# builds
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+next-env.d.ts
+# runtime data (local PGlite database, uploads, mail outbox)
+.data/
+/data/
+# env
+.env
+.env.local
+.env.*.local
+!.env.example
+# test output
+coverage/
+test-results/
+playwright-report/
+blob-report/
+# logs / OS
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+# editor
+.idea/
+.vscode/

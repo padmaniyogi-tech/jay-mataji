@@ -1,0 +1,116 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-canvas text-ink antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  ::selection {
+    @apply bg-brand-200 text-brand-900;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand-500 ring-offset-2 ring-offset-canvas;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-display tracking-tight text-ink;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  input,
+  textarea,
+  select,
+  button {
+    font: inherit;
+  }
+}
+
+@layer components {
+  .container-page {
+    @apply mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8;
+  }
+
+  .surface {
+    @apply rounded-2xl border border-line bg-surface shadow-card;
+  }
+
+  .eyebrow {
+    @apply text-xs font-semibold uppercase tracking-[0.14em] text-brand-700;
+  }
+
+  .muted {
+    @apply text-sm text-ink-soft;
+  }
+
+  .link {
+    @apply font-medium text-brand-700 underline decoration-brand-200 decoration-2 underline-offset-2 hover:decoration-brand-500;
+  }
+
+  .divider {
+    @apply h-px w-full bg-line;
+  }
+
+  .prose-legal h2 {
+    @apply mt-8 text-lg font-semibold text-ink;
+  }
+  .prose-legal h3 {
+    @apply mt-6 text-base font-semibold text-ink;
+  }
+  .prose-legal p {
+    @apply mt-3 text-sm leading-relaxed text-ink-soft;
+  }
+  .prose-legal ul {
+    @apply mt-3 list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-ink-soft;
+  }
+  .prose-legal a {
+    @apply link;
+  }
+
+  .skeleton {
+    @apply relative overflow-hidden rounded-lg bg-line/60;
+  }
+  .skeleton::after {
+    content: "";
+    @apply absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/70 to-transparent;
+  }
+
+  .demo-stripe {
+    background-image: repeating-linear-gradient(
+      -45deg,
+      rgba(245, 130, 11, 0.12) 0px,
+      rgba(245, 130, 11, 0.12) 10px,
+      transparent 10px,
+      transparent 20px
+    );
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
